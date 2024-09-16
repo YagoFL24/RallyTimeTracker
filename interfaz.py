@@ -24,3 +24,9 @@ def crearCompeticion():
 
 def cargarCompeticion():
     competiciones = cargarCompeticiones()
+
+def menuCompeticion():
+    print("---------------------------\n      Menú principal     \n      --------------      ")
+    print("  -> Pulse 1 para cargar competicion")
+    print("  -> Pulse 2 para crear competicion")
+    print("  -> Pulse 0 para cerrar el programa")

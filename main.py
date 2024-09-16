@@ -7,6 +7,7 @@ while finalizarPrograma==False:
     if a==0:
         finalizarPrograma=True
     if a==1:
+        cargarCompeticion()
     if a==2:
-        
+        crearCompeticion()
 
