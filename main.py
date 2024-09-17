@@ -34,6 +34,12 @@ while finalizarPrograma==False:
                 tiempo_milis = tiempo_a_milisegundos(tiempo)
                 add_time(competicion_escogida,tiempo_milis,etapa,participante)
                 os.system('cls')
+                mostrarDatos(competicion_escogida)
+            if b==3:
+                etapa = int(input("Etapa: "))
+                fill_times(competicion_escogida,etapa)
+                os.system('cls')
+                mostrarDatos(competicion_escogida)
                 
         
     if a==2:

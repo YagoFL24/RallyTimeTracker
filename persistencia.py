@@ -68,7 +68,7 @@ def get_participants(competition_id):
     conexion, cursor = start_connection()
     
     cursor.execute("SELECT participant_name FROM participants where competition_id = ?", (competition_id,))
-    participants = cursor.fetchall()
+    participants = [p[0] for p in cursor.fetchall()]
     
     close_connection(conexion)
     
@@ -86,6 +86,33 @@ def add_time(competition_name, time, numberOfStage, participant):
     conexion.commit()
     
     close_connection(conexion)
+    
+def fill_times(competition_name,numberOfStage):
+    conexion, cursor = start_connection()
+    
+    cursor.execute("SELECT id FROM competitions where competition_name = ?", (competition_name,))
+    competitionId = cursor.fetchall()
+    
+    cursor.execute("SELECT time FROM times where competition_id = ? and numberOfStage = ? ORDER BY time desc", (competitionId[0][0],numberOfStage))
+    worst_time = cursor.fetchone()
+    
+    
+    cursor.execute("SELECT participant FROM times where competition_id = ? and numberOfStage = ? ", (competitionId[0][0],numberOfStage))
+    participants = [p[0] for p in cursor.fetchall()]
+    
+    total_participants = get_participants(competitionId[0][0])
+    
+    missing_participants = [p for p in total_participants if p not in participants]
+    
+    for participant in missing_participants:
+        cursor.execute("INSERT INTO times (competition_id, time, numberOfStage, participant) VALUES (?, ?, ?, ?)", (competitionId[0][0], worst_time[0], numberOfStage, participant))
+        
+    conexion.commit()
+    close_connection(conexion)
+    
+    
+    
+    
     
 def get_times(participant, competition_id):
     conexion, cursor = start_connection()

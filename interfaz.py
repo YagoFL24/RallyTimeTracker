@@ -22,6 +22,7 @@ def menuCompeticion():
     print("---------------------------\n      Menú competicion     \n      --------------      ")
     print("  -> Pulse 1 para mostrar datos")
     print("  -> Pulse 2 para añadir tiempo")
+    print("  -> Pulse 3 para rellenar tiempos vacios")
     print("  -> Pulse 0 para volver al menú principal")
     
     
@@ -37,7 +38,7 @@ def mostrarDatos(competicion_escogida):
     i = 1
     mejor_tiempo = 0
     for participante, tiempo_total in participantes:
-        if len(participante) < 6:
+        if len(participante) < 5:
             print(str(i)+"-"+participante+"\t\t:",end='')    
         else :
             print(str(i)+"-"+participante+"\t:",end='')
