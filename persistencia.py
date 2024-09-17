@@ -37,8 +37,8 @@ def delete_competition(competition_name):
     competitionId = cursor.fetchall()
     
     cursor.execute("DELETE FROM competitions WHERE competition_name = ?", (competition_name,))
-    cursor.execute("DELETE FROM participants WHERE competition_id = ?", (competitionId,))
-    cursor.execute("DELETE FROM times WHERE competition_id = ?", (competitionId,))
+    cursor.execute("DELETE FROM participants WHERE competition_id = ?", (competitionId[0][0],))
+    cursor.execute("DELETE FROM times WHERE competition_id = ?", (competitionId[0][0],))
     conexion.commit()
     
     close_connection(conexion)
