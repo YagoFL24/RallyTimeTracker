@@ -9,7 +9,7 @@ def tiempo_a_milisegundos(tiempo_str):
 def milisegundos_a_tiempo(milisegundos):
     minutos = milisegundos // (60 * 1000)
     segundos = (milisegundos % (60 * 1000)) / 1000
-    return f"{int(minutos)}:{int(segundos):02}:{(milisegundos % 1000):03d}"
+    return f"{int(minutos)}:{int(segundos):02}.{(milisegundos % 1000):03d}"
 
 def orderParticipants(participants, competition_id):
     

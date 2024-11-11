@@ -3,7 +3,7 @@ from interfaz import *
 from persistencia import *
 from gestorTiempos import * 
 
-finalizarPrograma= False
+finalizarPrograma = False
 while finalizarPrograma==False:
     os.system('cls')
     menuPrincipal()
@@ -38,6 +38,12 @@ while finalizarPrograma==False:
             if b==3:
                 etapa = int(input("Etapa: "))
                 fill_times(competicion_escogida,etapa)
+                os.system('cls')
+                mostrarDatos(competicion_escogida)
+            if b==4:
+                participante = input("Participante: ")
+                etapa = int(input("Etapa: "))
+                fill_times_penalitation(competicion_escogida,etapa,participante)
                 os.system('cls')
                 mostrarDatos(competicion_escogida)
                 

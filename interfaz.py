@@ -22,7 +22,8 @@ def menuCompeticion():
     print("---------------------------\n      Menú competicion     \n      --------------      ")
     print("  -> Pulse 1 para mostrar datos")
     print("  -> Pulse 2 para añadir tiempo")
-    print("  -> Pulse 3 para rellenar tiempos vacios")
+    print("  -> Pulse 3 para rellenar abandonos")
+    print("  -> Pulse 4 para rellenar descalificaciones")
     print("  -> Pulse 0 para volver al menú principal")
     
     
@@ -39,18 +40,18 @@ def mostrarDatos(competicion_escogida):
     mejor_tiempo = 0
     for participante, tiempo_total in participantes:
         if len(participante) < 5:
-            print(str(i)+"-"+participante+"\t\t:",end='')    
+            print(str(i)+"- "+participante+"\t\t:",end='')    
         else :
-            print(str(i)+"-"+participante+"\t:",end='')
+            print(str(i)+"- "+participante+"\t:",end='')
         
         tiempos = get_times(participante, competition[0])
         
         for j in range(competition[2]):
             try:
                 tiempo = tiempos[j][0]
-                print(milisegundos_a_tiempo(tiempo)+"         || ",end='')
+                print(milisegundos_a_tiempo(tiempo)+"       || ",end='')
             except IndexError:
-                print(milisegundos_a_tiempo(0)+"         || ",end='')
+                print(milisegundos_a_tiempo(0)+"       || ",end='')
         
         if i == 1:
             print(milisegundos_a_tiempo(tiempo_total))
