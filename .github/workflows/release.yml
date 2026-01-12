@@ -2,15 +2,14 @@ name: Release
 
 on:
   push:
-    branches:
-      - main
+    tags:
+      - "v*"
 
 permissions:
   contents: write
 
 jobs:
   release:
-    if: github.actor != 'github-actions[bot]'
     runs-on: windows-latest
 
     steps:
@@ -24,16 +23,10 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Prepare release
-        id: prep
-        run: python .github/scripts/release.py
-
       - name: Install PyInstaller
-        if: steps.prep.outputs.release == 'true'
         run: python -m pip install --upgrade pip pyinstaller
 
       - name: Build exe
-        if: steps.prep.outputs.release == 'true'
         run: >
           python -m PyInstaller --noconfirm --onefile --windowed --name RallyTimeTracker
           --icon assets/images/rally.ico
@@ -41,21 +34,9 @@ jobs:
           --add-data "assets/images/rally.png;assets/images"
           src/main.py
 
-      - name: Commit changelog and tag
-        if: steps.prep.outputs.release == 'true'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add CHANGELOG.md
-          git commit -m "chore(release): ${{ steps.prep.outputs.version }}"
-          git tag ${{ steps.prep.outputs.version }}
-          git push origin main --tags
-
       - name: Create release
-        if: steps.prep.outputs.release == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.prep.outputs.version }}
-          name: ${{ steps.prep.outputs.version }}
-          body_path: ${{ steps.prep.outputs.release_notes }}
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
           files: dist/RallyTimeTracker.exe
