@@ -8,9 +8,8 @@ agregas tiempos, rellenas abandonos y ves la tabla general en tiempo real.
 
 ## Estructura
 - `src/`: codigo fuente de la aplicacion
-- `datos.db`: base de datos SQLite
-- `datos_template.db`: base de datos vacia usada para el ejecutable
-- `rally.ico`, `rally.png`: iconos de la app
+- `data/`: base de datos SQLite local (ignorada en Git)
+- `assets/images/`: iconos de la app
 
 ## Funcionalidades principales
 - Crear, borrar y listar competiciones.
@@ -29,7 +28,7 @@ python src/main.py
 ## Ejecutable
 Si ya tienes PyInstaller instalado, puedes generar el ejecutable asi:
 ```bash
-python -m PyInstaller --noconfirm --onefile --windowed --name RallyTimeTracker --icon rally.ico --add-data "datos_template.db;." --add-data "rally.ico;." --add-data "rally.png;." src/main.py
+python -m PyInstaller --noconfirm --onefile --windowed --name RallyTimeTracker --icon assets/images/rally.ico --add-data "assets/images/rally.ico;assets/images" --add-data "assets/images/rally.png;assets/images" src/main.py
 ```
 
 El ejecutable queda en `dist/RallyTimeTracker.exe`.
