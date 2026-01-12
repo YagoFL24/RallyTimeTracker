@@ -577,9 +577,9 @@ class RallyApp(tk.Tk):
             }
         else:
             colors = {
-                "bg": "#f3f3f3",
-                "panel": "#ffffff",
-                "entry_bg": "#ffffff",
+                "bg": "#d9d9d9",
+                "panel": "#d9d9d9",
+                "entry_bg": "#e3e3e3",
                 "fg": "#1e1e1e",
                 "accent": "#0e639c",
             }
@@ -590,12 +590,40 @@ class RallyApp(tk.Tk):
 
         self.style.configure("TFrame", background=colors["bg"])
         self.style.configure("TLabel", background=colors["bg"], foreground=colors["fg"])
-        self.style.configure("TButton", background=colors["panel"], foreground=colors["fg"])
+        self.style.configure(
+            "TButton",
+            background=colors["panel"],
+            foreground=colors["fg"],
+            bordercolor=colors["accent"],
+            lightcolor=colors["accent"],
+            darkcolor=colors["accent"],
+        )
         self.style.map("TButton", background=[("active", colors["accent"])], foreground=[("active", "#ffffff")])
-        self.style.configure("TEntry", fieldbackground=colors["entry_bg"], foreground=colors["fg"])
+        self.style.configure(
+            "TEntry",
+            fieldbackground=colors["entry_bg"],
+            foreground=colors["fg"],
+            bordercolor=colors["accent"],
+            lightcolor=colors["accent"],
+            darkcolor=colors["accent"],
+        )
         self.style.configure("TCombobox", fieldbackground=colors["entry_bg"], foreground=colors["fg"])
-        self.style.map("TCombobox", fieldbackground=[("readonly", colors["entry_bg"])])
-        self.style.configure("TLabelframe", background=colors["bg"], foreground=colors["fg"])
+        self.style.map(
+            "TCombobox",
+            fieldbackground=[("readonly", colors["entry_bg"])],
+            bordercolor=[("readonly", colors["accent"])],
+            lightcolor=[("readonly", colors["accent"])],
+            darkcolor=[("readonly", colors["accent"])],
+            arrowcolor=[("readonly", colors["accent"])],
+        )
+        self.style.configure(
+            "TLabelframe",
+            background=colors["bg"],
+            foreground=colors["fg"],
+            bordercolor=colors["accent"],
+            lightcolor=colors["accent"],
+            darkcolor=colors["accent"],
+        )
         self.style.configure("TLabelframe.Label", background=colors["bg"], foreground=colors["fg"])
 
         self.style.configure(
@@ -617,6 +645,15 @@ class RallyApp(tk.Tk):
             background=[("selected", colors["accent"])],
             foreground=[("selected", "#ffffff")],
         )
+        self.style.configure(
+            "TScrollbar",
+            background=colors["accent"],
+            troughcolor=colors["panel"],
+            bordercolor=colors["accent"],
+            lightcolor=colors["accent"],
+            darkcolor=colors["accent"],
+            arrowcolor=colors["accent"],
+        )
 
         if self.tree is not None:
             self.tree.configure(
@@ -625,14 +662,20 @@ class RallyApp(tk.Tk):
                 fieldbackground=colors["panel"],
             )
 
+        list_bg = colors["bg"]
         self.competition_list.configure(
-            bg=colors["panel"],
+            bg=list_bg,
             fg=colors["fg"],
             selectbackground=colors["accent"],
             selectforeground="#ffffff",
             highlightbackground=colors["bg"],
             highlightcolor=colors["bg"],
         )
+        selected = self.competition_list.curselection()
+        if selected:
+            self.competition_list.selection_clear(0, tk.END)
+            for idx in selected:
+                self.competition_list.selection_set(idx)
 
         for widget in list(self._theme_text_widgets):
             if widget.winfo_exists():
