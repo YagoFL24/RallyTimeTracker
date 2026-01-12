@@ -1,6 +1,8 @@
 import os
 from persistencia import *
-from gestorTiempos import * 
+from gestorTiempos import *
+
+# Imprime el menu principal CLI.
 def menuPrincipal():
     print("---------------------------\n      Menú principal     \n      --------------      ")
     print("  -> Pulse 1 para cargar competicion")
@@ -8,6 +10,7 @@ def menuPrincipal():
     print("  -> Pulse 3 para borrar competicion")
     print("  -> Pulse 0 para cerrar el programa")
 
+# Lista competiciones en CLI.
 def cargarCompeticiones():
     
     competiciones = get_competitions()
@@ -18,6 +21,7 @@ def cargarCompeticiones():
         print("  -", competicion[0])
     
 
+# Imprime el menu de una competicion.
 def menuCompeticion():
     print("---------------------------\n      Menú competicion     \n      --------------      ")
     print("  -> Pulse 1 para mostrar datos")
@@ -27,6 +31,7 @@ def menuCompeticion():
     print("  -> Pulse 0 para volver al menú principal")
     
     
+# Muestra tiempos y clasificacion en CLI.
 def mostrarDatos(competicion_escogida):
     competition = get_competition(competicion_escogida)
     print("\t\t",end='')

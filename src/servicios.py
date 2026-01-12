@@ -13,9 +13,11 @@ from persistencia import (
 
 
 class RallyService:
+    # Devuelve nombres de competiciones disponibles.
     def list_competitions(self):
         return [c[0] for c in get_competitions()]
 
+    # Carga datos completos de una competicion para la UI.
     def get_competition_info(self, competition_name):
         competition = get_competition(competition_name)
         if competition is None:
@@ -31,6 +33,7 @@ class RallyService:
             "leaderboard": leaderboard,
         }
 
+    # Valida y crea una competicion con participantes.
     def create_competition(self, name, stages, participants):
         name = (name or "").strip()
         if not name:
@@ -45,12 +48,14 @@ class RallyService:
         add_competition(name, stages, participants)
         return True, "Competicion creada."
 
+    # Borra una competicion y sus datos asociados.
     def delete_competition(self, name):
         ok = delete_competition(name)
         if not ok:
             return False, "No existe esa competicion."
         return True, "Competicion borrada."
 
+    # Valida y registra un tiempo en formato string.
     def add_time_str(self, competition_name, participant, stage, time_str):
         time_str = (time_str or "").strip()
         if not time_str:
@@ -64,12 +69,14 @@ class RallyService:
             return False, "No se pudo guardar el tiempo."
         return True, "Tiempo guardado."
 
+    # Rellena abandonos en una etapa con penalizacion base.
     def fill_missing_times(self, competition_name, stage):
         ok = fill_times(competition_name, stage)
         if not ok:
             return False, "No hay tiempos base para esa etapa."
         return True, "Abandonos rellenados."
 
+    # Aplica penalizacion en segundos a un participante.
     def penalize(self, competition_name, stage, participant, penalty_seconds):
         if penalty_seconds <= 0:
             return False, "La penalizacion debe ser mayor que cero."
@@ -79,6 +86,7 @@ class RallyService:
             return False, "No existe tiempo para ese participante/etapa."
         return True, "Penalizacion aplicada."
 
+    # Construye la clasificacion con tiempos por tramo.
     def _build_leaderboard(self, competition_id, stages, participants):
         leaderboard = []
         ordered = orderParticipants(participants, competition_id)
@@ -101,6 +109,7 @@ class RallyService:
         return leaderboard
 
     @staticmethod
+    # Formatea milisegundos a string o placeholder.
     def format_time(ms):
         if ms is None:
             return "--:--.---"
