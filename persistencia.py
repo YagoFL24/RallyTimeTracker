@@ -36,12 +36,17 @@ def delete_competition(competition_name):
     cursor.execute("SELECT id FROM competitions where competition_name = ?", (competition_name,))
     competitionId = cursor.fetchall()
     
+    if not competitionId:
+        close_connection(conexion)
+        return False
+
     cursor.execute("DELETE FROM competitions WHERE competition_name = ?", (competition_name,))
     cursor.execute("DELETE FROM participants WHERE competition_id = ?", (competitionId[0][0],))
     cursor.execute("DELETE FROM times WHERE competition_id = ?", (competitionId[0][0],))
     conexion.commit()
     
     close_connection(conexion)
+    return True
     
     
 def get_competitions():
@@ -62,6 +67,8 @@ def get_competition(competition_name):
     
     close_connection(conexion)
     
+    if not competition:
+        return None
     return competition[0]
 
 def get_participants(competition_id):
@@ -82,10 +89,15 @@ def add_time(competition_name, time, numberOfStage, participant):
     cursor.execute("SELECT id FROM competitions where competition_name = ?", (competition_name,))
     competitionId = cursor.fetchall()
 
+    if not competitionId:
+        close_connection(conexion)
+        return False
+
     cursor.execute("INSERT INTO times (competition_id, time, numberOfStage, participant) VALUES (?, ?, ?, ?)", (competitionId[0][0], time, numberOfStage, participant))
     conexion.commit()
     
     close_connection(conexion)
+    return True
     
 def fill_times(competition_name,numberOfStage):
     conexion, cursor = start_connection()
@@ -93,8 +105,16 @@ def fill_times(competition_name,numberOfStage):
     cursor.execute("SELECT id FROM competitions where competition_name = ?", (competition_name,))
     competitionId = cursor.fetchall()
     
+    if not competitionId:
+        close_connection(conexion)
+        return False
+
     cursor.execute("SELECT time FROM times where competition_id = ? and numberOfStage = ? ORDER BY time desc", (competitionId[0][0],numberOfStage))
     worst_time = cursor.fetchone()
+    
+    if worst_time is None:
+        close_connection(conexion)
+        return False
     
     
     cursor.execute("SELECT participant FROM times where competition_id = ? and numberOfStage = ? ", (competitionId[0][0],numberOfStage))
@@ -109,6 +129,7 @@ def fill_times(competition_name,numberOfStage):
         
     conexion.commit()
     close_connection(conexion)
+    return True
     
 def fill_times_penalitation(competition_name,numberOfStage,participant):
     conexion, cursor = start_connection()
@@ -116,8 +137,15 @@ def fill_times_penalitation(competition_name,numberOfStage,participant):
     cursor.execute("SELECT id FROM competitions where competition_name = ?", (competition_name,))
     competitionId = cursor.fetchall()
     
+    if not competitionId:
+        close_connection(conexion)
+        return False
+
     cursor.execute("SELECT time FROM times where competition_id = ? and numberOfStage = ? AND participant = ?", (competitionId[0][0],numberOfStage,participant))
     time = cursor.fetchone()
+    if time is None:
+        close_connection(conexion)
+        return False
     time = time[0] + 20000
     
     
@@ -126,6 +154,7 @@ def fill_times_penalitation(competition_name,numberOfStage,participant):
         
     conexion.commit()
     close_connection(conexion)
+    return True
     
     
     
