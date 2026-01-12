@@ -1,3 +1,5 @@
+import os
+import sys
 import tkinter as tk
 from tkinter import font as tkfont
 from tkinter import messagebox, ttk
@@ -201,11 +203,11 @@ class RallyApp(tk.Tk):
     def _set_app_icon(self):
         self._set_app_user_model_id()
         try:
-            self.iconbitmap("rally.ico")
+            self.iconbitmap(self._resource_path("assets", "images", "rally.ico"))
         except Exception:
             pass
         try:
-            icon = tk.PhotoImage(file="rally.png")
+            icon = tk.PhotoImage(file=self._resource_path("assets", "images", "rally.png"))
             self.iconphoto(True, icon)
         except Exception:
             pass
@@ -219,6 +221,10 @@ class RallyApp(tk.Tk):
             )
         except Exception:
             pass
+
+    def _resource_path(self, *parts):
+        base_dir = getattr(sys, "_MEIPASS", None) or os.getcwd()
+        return os.path.join(base_dir, *parts)
 
     def refresh_competitions(self):
         selections = self.competition_list.curselection()

@@ -1,5 +1,4 @@
 import os
-import shutil
 import sqlite3
 import sys
 
@@ -9,16 +8,11 @@ def _get_db_path():
         appdata = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
         data_dir = os.path.join(appdata, "RallyTimeTracker")
         os.makedirs(data_dir, exist_ok=True)
-        db_path = os.path.join(data_dir, "datos.db")
+        return os.path.join(data_dir, "datos.db")
 
-        if not os.path.exists(db_path):
-            bundled_dir = getattr(sys, "_MEIPASS", None) or os.path.dirname(sys.executable)
-            bundled_template = os.path.join(bundled_dir, "datos_template.db")
-            if os.path.exists(bundled_template):
-                shutil.copy2(bundled_template, db_path)
-        return db_path
-
-    return "datos.db"
+    data_dir = os.path.join(os.getcwd(), "data")
+    os.makedirs(data_dir, exist_ok=True)
+    return os.path.join(data_dir, "datos.db")
 
 
 def _initialize_schema(conexion):

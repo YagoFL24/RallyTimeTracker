@@ -2,11 +2,9 @@ dist/
 build/
 *.spec
 *.exe
-*.ico
-*.png
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+data/
 *.db
-
