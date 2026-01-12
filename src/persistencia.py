@@ -121,8 +121,14 @@ def add_time(competition_name, time, numberOfStage, participant):
     if not competitionId:
         close_connection(conexion)
         return False
-
-    cursor.execute("INSERT INTO times (competition_id, time, numberOfStage, participant) VALUES (?, ?, ?, ?)", (competitionId[0][0], time, numberOfStage, participant))
+    
+    cursor.execute("SELECT * FROM times where competition_id = ? and numberOfStage = ? AND participant = ?", (competitionId[0][0],numberOfStage, participant))
+    existing_time = cursor.fetchone()
+    
+    if existing_time is not None:
+        cursor.execute("UPDATE times SET time = ? WHERE competition_id = ? AND numberOfStage = ? AND participant = ?", (time, competitionId[0][0], numberOfStage, participant))
+    else:
+        cursor.execute("INSERT INTO times (competition_id, time, numberOfStage, participant) VALUES (?, ?, ?, ?)", (competitionId[0][0], time, numberOfStage, participant))
     conexion.commit()
     
     close_connection(conexion)
