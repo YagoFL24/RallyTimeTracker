@@ -1,5 +1,7 @@
 # Rally Time Tracker
 
+![Rally Time Tracker Logo](assets/images/rally.png)
+
 Aplicacion de escritorio para gestionar tiempos de rally de forma sencilla y visual. Permite crear competiciones,
 registrar tiempos por tramo, calcular clasificacion general y aplicar penalizaciones. La informacion se guarda en
 una base de datos SQLite local (`datos.db`), por lo que no necesitas servidor ni conexion a internet. La interfaz
