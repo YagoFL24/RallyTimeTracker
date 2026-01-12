@@ -49,7 +49,10 @@ def mostrarDatos(competicion_escogida):
         for j in range(competition[2]):
             try:
                 tiempo = tiempos[j][0]
-                print(milisegundos_a_tiempo(tiempo)+"       || ",end='')
+                if(milisegundos_a_tiempo(tiempo)[1] == ":"):
+                    print(milisegundos_a_tiempo(tiempo)+"       || ",end='')
+                else:
+                    print(milisegundos_a_tiempo(tiempo)+"      || ",end='')
             except IndexError:
                 print(milisegundos_a_tiempo(0)+"       || ",end='')
         
