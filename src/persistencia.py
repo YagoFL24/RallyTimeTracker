@@ -3,6 +3,7 @@ import sqlite3
 import sys
 
 
+# Resuelve la ruta de la base de datos segun entorno.
 def _get_db_path():
     if getattr(sys, "frozen", False):
         appdata = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
@@ -15,6 +16,7 @@ def _get_db_path():
     return os.path.join(data_dir, "datos.db")
 
 
+# Crea tablas base si no existen.
 def _initialize_schema(conexion):
     cursor = conexion.cursor()
     cursor.execute(
@@ -28,6 +30,7 @@ def _initialize_schema(conexion):
     )
     conexion.commit()
 
+# Abre conexion y cursor a SQLite.
 def start_connection():
     # Conectar (o crear) una base de datos local
     conexion = sqlite3.connect(_get_db_path())
@@ -38,10 +41,12 @@ def start_connection():
     
     return conexion, cursor
 
+# Cierra conexion activa.
 def close_connection(conexion):
     # Cerrar la conexión
     conexion.close()
 
+# Inserta una competicion y sus participantes.
 def add_competition(competition_name, numberOfStages, participants):
     conexion, cursor = start_connection()
 
@@ -59,6 +64,7 @@ def add_competition(competition_name, numberOfStages, participants):
     close_connection(conexion)
     
     
+# Elimina una competicion y sus datos asociados.
 def delete_competition(competition_name):
     conexion, cursor = start_connection()
     
@@ -78,6 +84,7 @@ def delete_competition(competition_name):
     return True
     
     
+# Devuelve lista de competiciones.
 def get_competitions():
     conexion, cursor = start_connection()
     
@@ -88,6 +95,7 @@ def get_competitions():
     
     return competitions
 
+# Devuelve una competicion por nombre.
 def get_competition(competition_name):
     conexion, cursor = start_connection()
     
@@ -100,6 +108,7 @@ def get_competition(competition_name):
         return None
     return competition[0]
 
+# Devuelve participantes de una competicion.
 def get_participants(competition_id):
     conexion, cursor = start_connection()
     
@@ -112,6 +121,7 @@ def get_participants(competition_id):
 
 
 
+# Inserta o actualiza un tiempo de participante.
 def add_time(competition_name, time, numberOfStage, participant):
     conexion, cursor = start_connection()
     
@@ -134,6 +144,7 @@ def add_time(competition_name, time, numberOfStage, participant):
     close_connection(conexion)
     return True
     
+# Rellena abandonos con penalizacion base.
 def fill_times(competition_name,numberOfStage):
     conexion, cursor = start_connection()
     
@@ -166,6 +177,7 @@ def fill_times(competition_name,numberOfStage):
     close_connection(conexion)
     return True
     
+# Aplica penalizacion en milisegundos.
 def fill_times_penalitation(competition_name, numberOfStage, participant, penalty_ms):
     conexion, cursor = start_connection()
     
@@ -195,6 +207,7 @@ def fill_times_penalitation(competition_name, numberOfStage, participant, penalt
     
     
     
+# Obtiene tiempos por participante y etapa.
 def get_times(participant, competition_id):
     conexion, cursor = start_connection()
     

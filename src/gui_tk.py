@@ -8,6 +8,7 @@ from servicios import RallyService
 
 
 class RallyApp(tk.Tk):
+    # Inicializa la ventana principal y el estado base.
     def __init__(self):
         super().__init__()
         self.service = RallyService()
@@ -28,6 +29,7 @@ class RallyApp(tk.Tk):
         self.refresh_competitions()
         self.current_leaderboard = []
 
+    # Construye el layout principal.
     def _build_ui(self):
         self.columnconfigure(0, weight=1)
         self.rowconfigure(0, weight=1)
@@ -43,6 +45,7 @@ class RallyApp(tk.Tk):
         self._build_right_panel(main)
         self._build_status_bar(main)
 
+    # Ajusta escalado y fuente base.
     def _configure_text_rendering(self):
         self._set_dpi_awareness()
         self.tk.call("tk", "scaling", 1.25)
@@ -51,6 +54,7 @@ class RallyApp(tk.Tk):
         base_font.configure(family="Segoe UI", size=15)
         self.option_add("*Font", base_font)
 
+    # Activa DPI awareness en Windows si es posible.
     def _set_dpi_awareness(self):
         try:
             import ctypes
@@ -59,6 +63,7 @@ class RallyApp(tk.Tk):
         except Exception:
             pass
 
+    # Construye el panel de competiciones y botones.
     def _build_left_panel(self, parent):
         panel = ttk.Frame(parent)
         panel.grid(row=0, column=0, sticky="nsw", padx=(0, 12))
@@ -98,6 +103,7 @@ class RallyApp(tk.Tk):
         self.theme_button = ttk.Button(panel, text="Modo oscuro", command=self.toggle_theme)
         self.theme_button.grid(row=3, column=0, sticky="ew", pady=(8, 0))
 
+    # Construye el panel de detalles y tabla.
     def _build_right_panel(self, parent):
         panel = ttk.Frame(parent)
         panel.grid(row=0, column=1, sticky="nsew")
@@ -116,6 +122,7 @@ class RallyApp(tk.Tk):
 
         self._build_actions(panel)
 
+    # Construye la fila de acciones inferiores.
     def _build_actions(self, parent):
         actions = ttk.Frame(parent)
         actions.grid(row=2, column=0, sticky="ew")
@@ -127,6 +134,7 @@ class RallyApp(tk.Tk):
         self._build_fill_missing(actions)
         self._build_penalize(actions)
 
+    # Crea el formulario para agregar tiempos.
     def _build_add_time(self, parent):
         frame = ttk.LabelFrame(parent, text="Agregar tiempo", padding=8)
         frame.grid(row=0, column=0, sticky="ew", padx=(0, 8))
@@ -152,6 +160,7 @@ class RallyApp(tk.Tk):
             row=3, column=0, columnspan=2, sticky="ew", pady=(6, 0)
         )
 
+    # Crea el formulario para rellenar abandonos.
     def _build_fill_missing(self, parent):
         frame = ttk.LabelFrame(parent, text="Rellenar abandonos", padding=8)
         frame.grid(row=0, column=1, sticky="ew", padx=(0, 8))
@@ -166,6 +175,7 @@ class RallyApp(tk.Tk):
             row=1, column=0, columnspan=2, sticky="ew", pady=(6, 0)
         )
 
+    # Crea el formulario para aplicar penalizaciones.
     def _build_penalize(self, parent):
         frame = ttk.LabelFrame(parent, text="Penalizar", padding=8)
         frame.grid(row=0, column=2, sticky="ew")
@@ -191,15 +201,18 @@ class RallyApp(tk.Tk):
             row=3, column=0, columnspan=2, sticky="ew", pady=(6, 0)
         )
 
+    # Muestra la barra de estado inferior.
     def _build_status_bar(self, parent):
         self.status_var = tk.StringVar(value="")
         status = ttk.Label(parent, textvariable=self.status_var, anchor="w")
         status.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(8, 0))
 
+    # Actualiza el mensaje de estado.
     def set_status(self, message, ok=True):
         prefix = "OK" if ok else "Aviso"
         self.status_var.set(f"{prefix}: {message}")
 
+    # Carga el icono de la aplicacion.
     def _set_app_icon(self):
         self._set_app_user_model_id()
         try:
@@ -212,6 +225,7 @@ class RallyApp(tk.Tk):
         except Exception:
             pass
 
+    # Fija el AppUserModelID para el icono en taskbar.
     def _set_app_user_model_id(self):
         try:
             import ctypes
@@ -222,10 +236,12 @@ class RallyApp(tk.Tk):
         except Exception:
             pass
 
+    # Resuelve rutas para recursos empaquetados.
     def _resource_path(self, *parts):
         base_dir = getattr(sys, "_MEIPASS", None) or os.getcwd()
         return os.path.join(base_dir, *parts)
 
+    # Recarga la lista de competiciones.
     def refresh_competitions(self):
         selections = self.competition_list.curselection()
         selected_name = None
@@ -244,6 +260,7 @@ class RallyApp(tk.Tk):
             self._clear_table()
             self._update_action_sources([], 0)
 
+    # Selecciona una competicion por nombre en la lista.
     def _select_competition_by_name(self, name):
         for idx in range(self.competition_list.size()):
             if self.competition_list.get(idx) == name:
@@ -253,6 +270,7 @@ class RallyApp(tk.Tk):
                 self.on_select_competition()
                 return
 
+    # Carga datos de la competicion seleccionada.
     def on_select_competition(self, _event=None):
         selection = self.competition_list.curselection()
         if selection:
@@ -272,11 +290,13 @@ class RallyApp(tk.Tk):
         self._render_table(competition)
         self._update_action_sources(competition["participants"], competition["stages"])
 
+    # Renderiza la tabla de tiempos y ranking.
     def _render_table(self, competition):
         self._build_table(competition["stages"])
         self.current_leaderboard = list(competition["leaderboard"])
         self._populate_table(self.current_leaderboard, competition["stages"])
 
+    # Configura columnas y scrolls de la tabla.
     def _build_table(self, stages):
         self._clear_table()
         columns = ["rank", "participant"] + [f"stage_{i}" for i in range(1, stages + 1)] + ["total", "diff"]
@@ -308,6 +328,7 @@ class RallyApp(tk.Tk):
 
         self.tree.config(yscrollcommand=v_scrollbar.set, xscrollcommand=h_scrollbar.set)
 
+    # Maneja scroll vertical con rueda.
     def _on_mousewheel(self, event):
         if event.num == 4:
             self.tree.yview_scroll(-20, "units")
@@ -316,6 +337,7 @@ class RallyApp(tk.Tk):
         else:
             self.tree.yview_scroll(int(-20 * (event.delta / 120)), "units")
 
+    # Maneja scroll horizontal con shift+rueda.
     def _on_shift_mousewheel(self, event):
         if event.num == 4:
             self.tree.xview_scroll(-20, "units")
@@ -324,6 +346,7 @@ class RallyApp(tk.Tk):
         else:
             self.tree.xview_scroll(int(-20 * (event.delta / 120)), "units")
 
+    # Inserta filas en la tabla.
     def _populate_table(self, rows, stages):
         if self.tree is None:
             return
@@ -340,6 +363,7 @@ class RallyApp(tk.Tk):
             ]
             self.tree.insert("", tk.END, values=values)
 
+    # Ordena la tabla por columna seleccionada.
     def sort_by_column(self, column, stages):
         if not self.current_leaderboard:
             return
@@ -362,6 +386,7 @@ class RallyApp(tk.Tk):
         sorted_rows = sorted(self.current_leaderboard, key=key_func)
         self._populate_table(sorted_rows, stages)
 
+    # Limpia tabla y scrollbars actuales.
     def _clear_table(self):
         if self.tree is not None:
             self.tree.destroy()
@@ -370,6 +395,7 @@ class RallyApp(tk.Tk):
             if isinstance(widget, ttk.Scrollbar):
                 widget.destroy()
 
+    # Actualiza combos de participantes y etapas.
     def _update_action_sources(self, participants, stages):
         stage_values = [str(i) for i in range(1, stages + 1)]
 
@@ -387,6 +413,7 @@ class RallyApp(tk.Tk):
             combo["values"] = stage_values
             combo.set(stage_values[0] if stage_values else "")
 
+    # Guarda un tiempo desde el formulario.
     def add_time_clicked(self):
         if not self.current_competition:
             self.set_status("Seleccione una competicion.", ok=False)
@@ -403,6 +430,7 @@ class RallyApp(tk.Tk):
             self.add_time_var.set("")
             self.on_select_competition()
 
+    # Rellena abandonos en la etapa seleccionada.
     def fill_missing_clicked(self):
         if not self.current_competition:
             self.set_status("Seleccione una competicion.", ok=False)
@@ -416,6 +444,7 @@ class RallyApp(tk.Tk):
         if ok:
             self.on_select_competition()
 
+    # Aplica penalizacion con segundos indicados.
     def penalize_clicked(self):
         if not self.current_competition:
             self.set_status("Seleccione una competicion.", ok=False)
@@ -444,6 +473,7 @@ class RallyApp(tk.Tk):
         if ok:
             self.on_select_competition()
 
+    # Abre dialogo para crear competicion.
     def open_new_competition(self):
         dialog = tk.Toplevel(self)
         dialog.title("Nueva competicion")
@@ -468,6 +498,7 @@ class RallyApp(tk.Tk):
         participants_text.grid(row=2, column=1, sticky="ew", padx=8, pady=2)
         self._register_text_widget(participants_text)
 
+        # Valida datos y crea la competicion desde el dialogo.
         def create():
             name = name_var.get().strip()
             try:
@@ -498,6 +529,7 @@ class RallyApp(tk.Tk):
         ttk.Button(buttons, text="Crear", command=create).grid(row=0, column=0, sticky="ew", padx=(0, 6))
         ttk.Button(buttons, text="Cancelar", command=dialog.destroy).grid(row=0, column=1, sticky="ew")
 
+    # Elimina la competicion actual previa confirmacion.
     def delete_selected_competition(self):
         if not self.current_competition:
             self.set_status("Seleccione una competicion.", ok=False)
@@ -510,14 +542,17 @@ class RallyApp(tk.Tk):
         if ok:
             self.refresh_competitions()
 
+    # Registra widgets Text para aplicar tema.
     def _register_text_widget(self, widget):
         self._theme_text_widgets.append(widget)
         widget.bind("<Destroy>", lambda _event, w=widget: self._unregister_text_widget(w))
         self._apply_text_widget_theme(widget)
 
+    # Elimina un widget Text de la lista de temas.
     def _unregister_text_widget(self, widget):
         self._theme_text_widgets = [w for w in self._theme_text_widgets if w is not widget]
 
+    # Aplica colores del tema a widgets Text.
     def _apply_text_widget_theme(self, widget):
         colors = self.theme_colors
         if not colors:
@@ -530,6 +565,7 @@ class RallyApp(tk.Tk):
             highlightcolor=colors["accent"],
         )
 
+    # Aplica el tema visual a toda la UI.
     def apply_theme(self):
         if self.dark_mode:
             colors = {
@@ -606,11 +642,13 @@ class RallyApp(tk.Tk):
 
         self.theme_button.config(text="Modo oscuro" if self.dark_mode else "Modo claro")
 
+    # Alterna entre modo claro y oscuro.
     def toggle_theme(self):
         self.dark_mode = not self.dark_mode
         self.apply_theme()
 
 
+# Arranca la aplicacion.
 def main():
     app = RallyApp()
     app.mainloop()
