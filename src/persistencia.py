@@ -13,16 +13,31 @@ def _get_db_path():
 
         if not os.path.exists(db_path):
             bundled_dir = getattr(sys, "_MEIPASS", None) or os.path.dirname(sys.executable)
-            bundled_db = os.path.join(bundled_dir, "datos.db")
-            if os.path.exists(bundled_db):
-                shutil.copy2(bundled_db, db_path)
+            bundled_template = os.path.join(bundled_dir, "datos_template.db")
+            if os.path.exists(bundled_template):
+                shutil.copy2(bundled_template, db_path)
         return db_path
 
     return "datos.db"
 
+
+def _initialize_schema(conexion):
+    cursor = conexion.cursor()
+    cursor.execute(
+        "CREATE TABLE IF NOT EXISTS competitions (id INTEGER PRIMARY KEY AUTOINCREMENT, competition_name varchar2(255) UNIQUE, numberOfStages int)"
+    )
+    cursor.execute(
+        "CREATE TABLE IF NOT EXISTS participants (competition_id int, participant_name varchar2(255), foreign key(competition_id) references competiciones(id))"
+    )
+    cursor.execute(
+        "CREATE TABLE IF NOT EXISTS times (competition_id int, time int, numberOfStage int, participant varchar2(255), foreign key(competition_id) references competitions(id))"
+    )
+    conexion.commit()
+
 def start_connection():
     # Conectar (o crear) una base de datos local
     conexion = sqlite3.connect(_get_db_path())
+    _initialize_schema(conexion)
 
     # Crear un cursor para ejecutar comandos SQL
     cursor = conexion.cursor()
