@@ -2,6 +2,19 @@
 
 ## v1.0.0 - 2026-01-12
 
+- Merge pull request #6 from YagoFL24/feature/cambios-primera-version
+- feat: cambios en los colores de la UI
+- chore(release): v1.0.0
+- Merge pull request #5 from YagoFL24/feature/cambios-primera-version
+- BREAKING CHANGE: Cambio para generar release inicial
+- chore(release): v0.0.1
+- Merge pull request #4 from YagoFL24/feature/cambios-primera-version
+- fix: Automatizacion de release
+- Merge pull request #3 from YagoFL24/feature/cambios-primera-version
+- chore(release): v0.1.0
+- Merge pull request #2 from YagoFL24/feature/cambios-primera-version
+## v1.0.0 - 2026-01-12
+
 - Merge pull request #5 from YagoFL24/feature/cambios-primera-version
 - BREAKING CHANGE: Cambio para generar release inicial
 - chore(release): v0.0.1
