@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.0.1 - 2026-01-12
+
+- Merge pull request #4 from YagoFL24/feature/cambios-primera-version
+- fix: Automatizacion de release
+- Merge pull request #3 from YagoFL24/feature/cambios-primera-version
+- chore(release): v0.1.0
+- Merge pull request #2 from YagoFL24/feature/cambios-primera-version
 ## v0.1.0 - 2026-01-12
 
 - Merge pull request #2 from YagoFL24/feature/cambios-primera-version
