@@ -43,7 +43,8 @@ while finalizarPrograma == False:
             if b == 4:
                 participante = input("Participante: ")
                 etapa = int(input("Etapa: "))
-                fill_times_penalitation(competicion_escogida, etapa, participante)
+                segundos = float(input("Segundos de penalizacion: "))
+                fill_times_penalitation(competicion_escogida, etapa, participante, int(segundos * 1000))
                 os.system("cls")
                 mostrarDatos(competicion_escogida)
 

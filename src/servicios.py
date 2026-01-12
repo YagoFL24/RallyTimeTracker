@@ -70,8 +70,11 @@ class RallyService:
             return False, "No hay tiempos base para esa etapa."
         return True, "Abandonos rellenados."
 
-    def penalize(self, competition_name, stage, participant):
-        ok = fill_times_penalitation(competition_name, stage, participant)
+    def penalize(self, competition_name, stage, participant, penalty_seconds):
+        if penalty_seconds <= 0:
+            return False, "La penalizacion debe ser mayor que cero."
+        penalty_ms = int(penalty_seconds * 1000)
+        ok = fill_times_penalitation(competition_name, stage, participant, penalty_ms)
         if not ok:
             return False, "No existe tiempo para ese participante/etapa."
         return True, "Penalizacion aplicada."

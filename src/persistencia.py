@@ -131,7 +131,7 @@ def fill_times(competition_name,numberOfStage):
     close_connection(conexion)
     return True
     
-def fill_times_penalitation(competition_name,numberOfStage,participant):
+def fill_times_penalitation(competition_name, numberOfStage, participant, penalty_ms):
     conexion, cursor = start_connection()
     
     cursor.execute("SELECT id FROM competitions where competition_name = ?", (competition_name,))
@@ -146,7 +146,7 @@ def fill_times_penalitation(competition_name,numberOfStage,participant):
     if time is None:
         close_connection(conexion)
         return False
-    time = time[0] + 20000
+    time = time[0] + penalty_ms
     
     
     cursor.execute(" UPDATE times SET time = ? WHERE competition_id = ? AND numberOfStage = ? AND participant = ?", (time,competitionId[0][0], numberOfStage, participant))

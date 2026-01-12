@@ -181,8 +181,12 @@ class RallyApp(tk.Tk):
         self.penalize_stage_combo = ttk.Combobox(frame, textvariable=self.penalize_stage_var, state="readonly")
         self.penalize_stage_combo.grid(row=1, column=1, sticky="ew", pady=2)
 
+        ttk.Label(frame, text="Segundos").grid(row=2, column=0, sticky="w")
+        self.penalize_seconds_var = tk.StringVar(value="10")
+        ttk.Entry(frame, textvariable=self.penalize_seconds_var).grid(row=2, column=1, sticky="ew", pady=2)
+
         ttk.Button(frame, text="Aplicar", command=self.penalize_clicked).grid(
-            row=2, column=0, columnspan=2, sticky="ew", pady=(6, 0)
+            row=3, column=0, columnspan=2, sticky="ew", pady=(6, 0)
         )
 
     def _build_status_bar(self, parent):
@@ -382,10 +386,24 @@ class RallyApp(tk.Tk):
             return
         participant = self.penalize_participant_var.get()
         stage = self.penalize_stage_var.get()
+        seconds_text = (self.penalize_seconds_var.get() or "").strip()
         if not participant or not stage:
             self.set_status("Debe seleccionar participante y etapa.", ok=False)
             return
-        ok, msg = self.service.penalize(self.current_competition["name"], int(stage), participant)
+        if not seconds_text:
+            self.set_status("Debe indicar la penalizacion en segundos.", ok=False)
+            return
+        try:
+            penalty_seconds = float(seconds_text)
+        except ValueError:
+            self.set_status("Segundos invalido.", ok=False)
+            return
+        ok, msg = self.service.penalize(
+            self.current_competition["name"],
+            int(stage),
+            participant,
+            penalty_seconds,
+        )
         self.set_status(msg, ok=ok)
         if ok:
             self.on_select_competition()
