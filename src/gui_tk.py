@@ -192,7 +192,7 @@ class RallyApp(tk.Tk):
         )
 
     def _build_status_bar(self, parent):
-        self.status_var = tk.StringVar(value="Listo.")
+        self.status_var = tk.StringVar(value="")
         status = ttk.Label(parent, textvariable=self.status_var, anchor="w")
         status.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(8, 0))
 
@@ -255,9 +255,12 @@ class RallyApp(tk.Tk):
 
     def on_select_competition(self, _event=None):
         selection = self.competition_list.curselection()
-        if not selection:
+        if selection:
+            name = self.competition_list.get(selection[0])
+        elif self.current_competition:
+            name = self.current_competition["name"]
+        else:
             return
-        name = self.competition_list.get(selection[0])
         competition = self.service.get_competition_info(name)
         if competition is None:
             self.set_status("La competicion ya no existe.", ok=False)
@@ -279,12 +282,23 @@ class RallyApp(tk.Tk):
         columns = ["rank", "participant"] + [f"stage_{i}" for i in range(1, stages + 1)] + ["total", "diff"]
         self.tree = ttk.Treeview(self.table_frame, columns=columns, show="headings", height=16)
         self.tree.grid(row=0, column=0, sticky="nsew")
+        self.tree.bind("<MouseWheel>", self._on_mousewheel)
+        self.tree.bind("<Shift-MouseWheel>", self._on_shift_mousewheel)
+        self.tree.bind("<Button-4>", self._on_mousewheel)
+        self.tree.bind("<Button-5>", self._on_mousewheel)
+        self.tree.bind("<Shift-Button-4>", self._on_shift_mousewheel)
+        self.tree.bind("<Shift-Button-5>", self._on_shift_mousewheel)
 
         headings = ["Pos", "Piloto"] + [f"Tramo {i}" for i in range(1, stages + 1)] + ["General", "Dif."]
         for col, heading in zip(columns, headings):
             self.tree.heading(col, text=heading, command=lambda c=col: self.sort_by_column(c, stages))
             anchor = "w" if col == "participant" else "center"
-            width = 140 if col == "participant" else 90
+            if col == "participant":
+                width = 180
+            elif col in ("total", "diff"):
+                width = 120
+            else:
+                width = 110
             self.tree.column(col, width=width, anchor=anchor, stretch=True)
 
         v_scrollbar = ttk.Scrollbar(self.table_frame, orient="vertical", command=self.tree.yview)
@@ -293,6 +307,22 @@ class RallyApp(tk.Tk):
         h_scrollbar.grid(row=1, column=0, sticky="ew")
 
         self.tree.config(yscrollcommand=v_scrollbar.set, xscrollcommand=h_scrollbar.set)
+
+    def _on_mousewheel(self, event):
+        if event.num == 4:
+            self.tree.yview_scroll(-20, "units")
+        elif event.num == 5:
+            self.tree.yview_scroll(20, "units")
+        else:
+            self.tree.yview_scroll(int(-20 * (event.delta / 120)), "units")
+
+    def _on_shift_mousewheel(self, event):
+        if event.num == 4:
+            self.tree.xview_scroll(-20, "units")
+        elif event.num == 5:
+            self.tree.xview_scroll(20, "units")
+        else:
+            self.tree.xview_scroll(int(-20 * (event.delta / 120)), "units")
 
     def _populate_table(self, rows, stages):
         if self.tree is None:
@@ -574,7 +604,7 @@ class RallyApp(tk.Tk):
             else:
                 self._unregister_text_widget(widget)
 
-        self.theme_button.config(text="Modo claro" if self.dark_mode else "Modo oscuro")
+        self.theme_button.config(text="Modo oscuro" if self.dark_mode else "Modo claro")
 
     def toggle_theme(self):
         self.dark_mode = not self.dark_mode
