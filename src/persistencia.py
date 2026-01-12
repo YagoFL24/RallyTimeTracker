@@ -1,8 +1,28 @@
+import os
+import shutil
 import sqlite3
+import sys
+
+
+def _get_db_path():
+    if getattr(sys, "frozen", False):
+        appdata = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+        data_dir = os.path.join(appdata, "RallyTimeTracker")
+        os.makedirs(data_dir, exist_ok=True)
+        db_path = os.path.join(data_dir, "datos.db")
+
+        if not os.path.exists(db_path):
+            bundled_dir = getattr(sys, "_MEIPASS", None) or os.path.dirname(sys.executable)
+            bundled_db = os.path.join(bundled_dir, "datos.db")
+            if os.path.exists(bundled_db):
+                shutil.copy2(bundled_db, db_path)
+        return db_path
+
+    return "datos.db"
 
 def start_connection():
     # Conectar (o crear) una base de datos local
-    conexion = sqlite3.connect('datos.db')
+    conexion = sqlite3.connect(_get_db_path())
 
     # Crear un cursor para ejecutar comandos SQL
     cursor = conexion.cursor()
