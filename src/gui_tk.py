@@ -289,6 +289,12 @@ class RallyApp(tk.Tk):
         self.header_label.config(text=header)
         self._render_table(competition)
         self._update_action_sources(competition["participants"], competition["stages"])
+        default_stage = self.service.get_default_stage(
+            competition["id"],
+            competition["stages"],
+            competition["participants"],
+        )
+        self.add_stage_combo.set(str(default_stage))
 
     # Renderiza la tabla de tiempos y ranking.
     def _render_table(self, competition):
@@ -429,6 +435,7 @@ class RallyApp(tk.Tk):
         if ok:
             self.add_time_var.set("")
             self.on_select_competition()
+            self.add_stage_combo.set(stage)
 
     # Rellena abandonos en la etapa seleccionada.
     def fill_missing_clicked(self):
