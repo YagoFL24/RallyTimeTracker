@@ -217,3 +217,16 @@ def get_times(participant, competition_id):
     close_connection(conexion)
     
     return times
+
+# Devuelve conteos de tiempos por etapa.
+def get_stage_counts(competition_id):
+    conexion, cursor = start_connection()
+
+    cursor.execute(
+        "SELECT numberOfStage, COUNT(*) FROM times WHERE competition_id = ? GROUP BY numberOfStage",
+        (competition_id,),
+    )
+    counts = {row[0]: row[1] for row in cursor.fetchall()}
+
+    close_connection(conexion)
+    return counts

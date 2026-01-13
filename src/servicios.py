@@ -8,6 +8,7 @@ from persistencia import (
     get_competition,
     get_competitions,
     get_participants,
+    get_stage_counts,
     get_times,
 )
 
@@ -107,6 +108,17 @@ class RallyService:
                 }
             )
         return leaderboard
+
+    # Determina la etapa con tiempos faltantes mas cercana.
+    def get_default_stage(self, competition_id, stages, participants):
+        if not participants or stages <= 0:
+            return 1
+        counts = get_stage_counts(competition_id)
+        total = len(participants)
+        for stage in range(1, stages + 1):
+            if counts.get(stage, 0) < total:
+                return stage
+        return stages
 
     @staticmethod
     # Formatea milisegundos a string o placeholder.
