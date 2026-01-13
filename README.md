@@ -8,7 +8,6 @@ una base de datos SQLite local (`datos.db`), por lo que no necesitas servidor ni
 esta hecha con Tkinter y esta pensada para usarse rapidamente durante una carrera: seleccionas la competicion,
 agregas tiempos, rellenas abandonos y ves la tabla general en tiempo real.
 
-
 ## Estructura
 
 - `src/`: codigo fuente de la aplicacion
