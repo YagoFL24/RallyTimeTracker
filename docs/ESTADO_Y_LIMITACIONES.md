@@ -13,7 +13,7 @@ Comprobaciones realizadas el 26 de julio de 2026:
 - revisión de tags, historial y archivos versionados;
 - no se abrió ni modificó la base de trabajo real.
 
-Existe una suite automatizada para el versionado y para las reglas de tiempos, etapas, participantes y penalizaciones. La ventana no se sometió a una prueba gráfica automatizada y el ejecutable local no se reconstruyó durante esta revisión.
+Existe una suite de 50 pruebas para versionado y publicación, reglas de entrada, persistencia, clasificación completa, abandonos, penalizaciones y lógica de tabla sin interfaz gráfica. La ventana no se sometió a una prueba gráfica automatizada y el ejecutable local no se reconstruyó durante esta revisión.
 
 ## 2. Funciones confirmadas
 
@@ -25,13 +25,14 @@ Existe una suite automatizada para el versionado y para las reglas de tiempos, e
 | Validación de tiempo `m:ss.xxx` | Cubierta por pruebas unitarias |
 | Rango de etapas y pertenencia de participantes | Validado en servicio y persistencia |
 | Rechazo de participantes duplicados | Validado sin distinguir mayúsculas/minúsculas |
-| Cálculo de total con filas existentes | Funciona |
-| Relleno con peor tiempo + 10 s | Funciona con al menos un tiempo base |
-| Penalización positiva y acumulativa | Funciona sobre un tiempo existente |
-| Borrado de datos asociados | Funciona mediante borrado manual |
-| Persistencia entre sesiones | Soportada por SQLite local |
-| Selección de primera etapa incompleta | Funciona por conteo de filas |
-| SemVer y Conventional Commits | Cubierto por pruebas unitarias |
+| Cálculo de total con filas existentes | Cubierto para clasificaciones completas |
+| Relleno con peor tiempo + 10 s | Cubierto, incluidos repetición y overflow |
+| Penalización positiva y acumulativa | Cubierta por participante y etapa |
+| Borrado de datos asociados | Cubierto mediante borrado manual |
+| Persistencia entre sesiones | Cubierta sobre SQLite temporal |
+| Selección de primera etapa incompleta | Cubierta por conteo de filas |
+| SemVer, changelog y Conventional Commits | Cubiertos por pruebas unitarias |
+| CI antes del merge | Configurada para ramas y pull requests |
 | Build automatizado de Windows | Configurado, no reconstruido en esta revisión |
 
 ## 3. Problemas de prioridad alta
@@ -82,7 +83,7 @@ Construir el ranking consulta los tiempos dos veces por participante y abre una 
 - CLI y GUI conservan presentación duplicada, aunque comparten validación mediante `RallyService`.
 - La CLI valida los datos de dominio, pero una opción de menú no numérica aún puede cerrarla y usa `cls`, específico de Windows.
 - `varchar2` funciona por afinidad flexible de SQLite, pero no es un tipo idiomático de SQLite.
-- Versionado y validación tienen tests; aún no hay cobertura completa de aplicación, linter, formateador, type checking ni informe de cobertura.
+- La suite no levanta una ventana ni prueba diálogos o el EXE; tampoco hay linter, formateador, type checking ni informe porcentual de cobertura.
 - No hay metadatos de paquete, versión visible en la aplicación ni archivo de licencia.
 - Hay bytecode histórico versionado a pesar de estar ignorado actualmente.
 - El `.spec` local no coincide con el comando de build del workflow.
