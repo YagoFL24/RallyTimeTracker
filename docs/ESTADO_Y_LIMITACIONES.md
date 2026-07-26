@@ -13,7 +13,7 @@ Comprobaciones realizadas el 26 de julio de 2026:
 - revisión de tags, historial y archivos versionados;
 - no se abrió ni modificó la base de trabajo real.
 
-Existe una suite automatizada para el versionado. La funcionalidad de la aplicación aún no tiene tests automatizados, la ventana no se sometió a una prueba gráfica automatizada y el ejecutable local no se reconstruyó durante esta revisión.
+Existe una suite automatizada para el versionado y para las reglas de tiempos, etapas, participantes y penalizaciones. La ventana no se sometió a una prueba gráfica automatizada y el ejecutable local no se reconstruyó durante esta revisión.
 
 ## 2. Funciones confirmadas
 
@@ -22,6 +22,9 @@ Existe una suite automatizada para el versionado. La funcionalidad de la aplicac
 | Creación de competición válida | Funciona |
 | Rechazo de nombre vacío o repetido | Funciona desde el servicio |
 | Alta y sustitución de tiempo | Funciona |
+| Validación de tiempo `m:ss.xxx` | Cubierta por pruebas unitarias |
+| Rango de etapas y pertenencia de participantes | Validado en servicio y persistencia |
+| Rechazo de participantes duplicados | Validado sin distinguir mayúsculas/minúsculas |
 | Cálculo de total con filas existentes | Funciona |
 | Relleno con peor tiempo + 10 s | Funciona con al menos un tiempo base |
 | Penalización positiva y acumulativa | Funciona sobre un tiempo existente |
@@ -45,17 +48,11 @@ Impacto: una clasificación parcial puede comunicar un orden falso durante una c
 
 Impacto: la tabla puede atribuir un tiempo al tramo equivocado.
 
-### Validación insuficiente de tiempos y referencias
-
-La API acepta etapas fuera del rango de la competición y el parser admite valores como `1:75.000`. Persistencia tampoco verifica que el texto del participante pertenezca a la competición.
-
-Impacto: datos válidos para SQLite pero inválidos para el dominio, con posibles resultados o errores de renderizado incoherentes.
-
 ## 4. Problemas de prioridad media
 
 ### Integridad débil del esquema
 
-La clave foránea de `participants` apunta a `competiciones`, no se activan claves foráneas y faltan restricciones únicas. Los participantes duplicados son aceptados.
+La clave foránea de `participants` apunta a `competiciones`, no se activan claves foráneas y faltan restricciones únicas. Servicio y persistencia impiden crear nuevos participantes duplicados, pero el esquema por sí solo aún los permite si se modifica SQLite externamente.
 
 ### Borrado visualmente obsoleto
 
@@ -82,11 +79,10 @@ Construir el ranking consulta los tiempos dos veces por participante y abre una 
 - La ordenación de cabeceras solo es ascendente y no muestra el criterio activo.
 - La preferencia de tema no persiste.
 - La penalización de abandono está fija en 10 segundos.
-- CLI y GUI duplican flujos, pero no comparten toda la validación.
-- La CLI no captura entradas inválidas y usa `cls`, específico de Windows.
-- La creación de competición no es una única transacción atómica.
+- CLI y GUI conservan presentación duplicada, aunque comparten validación mediante `RallyService`.
+- La CLI valida los datos de dominio, pero una opción de menú no numérica aún puede cerrarla y usa `cls`, específico de Windows.
 - `varchar2` funciona por afinidad flexible de SQLite, pero no es un tipo idiomático de SQLite.
-- Solo el versionado tiene tests; no hay tests de aplicación, linter, formateador, type checking ni cobertura configurados.
+- Versionado y validación tienen tests; aún no hay cobertura completa de aplicación, linter, formateador, type checking ni informe de cobertura.
 - No hay metadatos de paquete, versión visible en la aplicación ni archivo de licencia.
 - Hay bytecode histórico versionado a pesar de estar ignorado actualmente.
 - El `.spec` local no coincide con el comando de build del workflow.
@@ -98,10 +94,9 @@ Hasta corregir los problemas de clasificación:
 1. completa todos los tramos de todos los participantes antes de tomar la tabla como resultado oficial;
 2. introduce etapas en orden o revisa los datos fuera de la tabla si hay huecos;
 3. usa siempre `m:ss.xxx`, con segundos entre `00` y `59`;
-4. evita participantes duplicados;
-5. mantén una copia de `datos.db` antes de correcciones o borrados masivos;
-6. no ejecutes dos instancias sobre la misma base;
-7. ejecuta las pruebas de release y revisa el tag esperado antes de publicar desde `main`.
+4. mantén una copia de `datos.db` antes de correcciones o borrados masivos;
+5. no ejecutes dos instancias sobre la misma base;
+6. ejecuta la suite completa y revisa el tag esperado antes de publicar desde `main`.
 
 ## 7. Criterio sugerido de estabilización
 
@@ -111,7 +106,7 @@ Una siguiente versión puede considerarse apta para operación fiable cuando:
 - la clasificación distingue participantes incompletos;
 - todas las entradas se validan en el servicio y se respaldan con restricciones SQLite;
 - existe una migración compatible con bases actuales;
-- los casos de uso principales tienen pruebas temporales automatizadas;
+- los casos de uso aún no cubiertos tienen pruebas temporales automatizadas;
 - el release sigue superando sus pruebas de tags y Conventional Commits;
 - el borrado limpia inmediatamente el estado de la GUI;
 - se ha probado el ejecutable contra una copia de una base real.

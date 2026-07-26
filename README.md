@@ -86,7 +86,7 @@ RallyTimeTracker/
 └── README.md
 ```
 
-`build/`, `dist/`, las bases de datos, los ejecutables y los archivos `.spec` son artefactos locales ignorados por Git. El repositorio contiene pruebas automatizadas para el versionado, pero todavía no para la funcionalidad de la aplicación. Tampoco contiene un archivo de licencia.
+`build/`, `dist/`, las bases de datos, los ejecutables y los archivos `.spec` son artefactos locales ignorados por Git. El repositorio contiene pruebas automatizadas para el versionado y las reglas de validación, pero todavía no para toda la funcionalidad de la aplicación. Tampoco contiene un archivo de licencia.
 
 ## Ejecutable de Windows
 
@@ -99,4 +99,4 @@ python -m PyInstaller --noconfirm --onefile --windowed --name RallyTimeTracker -
 
 El resultado se genera en `dist/RallyTimeTracker.exe`. El workflow de GitHub Actions ejecuta este mismo proceso al publicar una release.
 
-Antes de usar la aplicación en una prueba real, revisa las [limitaciones conocidas](docs/ESTADO_Y_LIMITACIONES.md), especialmente las relacionadas con clasificaciones incompletas y validación de datos.
+Antes de usar la aplicación en una prueba real, revisa las [limitaciones conocidas](docs/ESTADO_Y_LIMITACIONES.md), especialmente las relacionadas con clasificaciones incompletas e integridad del esquema.

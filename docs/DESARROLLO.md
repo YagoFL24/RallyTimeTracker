@@ -43,7 +43,7 @@ No uses una base real para pruebas destructivas. Crea un directorio temporal, ca
 
 ## 4. Pruebas y controles
 
-El repositorio contiene pruebas unitarias para el versionado automático. Todavía no hay pruebas funcionales de la aplicación ni configuración de lint, formato, tipos o cobertura.
+El repositorio contiene pruebas unitarias para el versionado automático y pruebas funcionales de validación sobre bases SQLite temporales. Todavía no hay cobertura automatizada de toda la GUI, clasificación o migraciones, ni configuración de lint, formato, tipos o cobertura.
 
 Ejecutar las pruebas disponibles:
 

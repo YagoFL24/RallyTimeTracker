@@ -36,7 +36,7 @@ Los participantes se pueden escribir de dos formas:
 - uno por línea, que es la opción recomendada;
 - todos en una única línea, separados por comas.
 
-Las líneas vacías y los espacios al principio o al final se eliminan. La versión actual no impide repetir un participante dentro de la misma competición; conviene revisar la lista antes de crearla.
+Las líneas vacías introducidas en el cuadro se omiten y los espacios al principio o al final se eliminan. Los nombres de participantes no pueden estar vacíos, superar 255 caracteres ni repetirse, incluso si solo cambia el uso de mayúsculas y minúsculas.
 
 Cuando la operación termina correctamente, la competición queda seleccionada y se muestra su tabla.
 
@@ -75,9 +75,16 @@ Después de guardar, la tabla se vuelve a cargar, el campo de tiempo se vacía y
 
 La etapa sugerida al seleccionar una competición es la primera que tiene menos registros que participantes. Si todas están completas, se propone la última.
 
-### Validación actual del formato
+### Validación del formato y las referencias
 
-La interfaz exige que haya texto y que pueda separarse por `:` en dos valores numéricos. El mensaje orientativo es `m:ss.xxx`, pero actualmente no se comprueba que los segundos estén entre 0 y 59, que el tiempo sea positivo o que tenga exactamente tres decimales. Para evitar datos incoherentes, usa siempre el formato de los ejemplos.
+El tiempo debe cumplir exactamente `m:ss.xxx`:
+
+- uno o más dígitos para los minutos;
+- dos dígitos de segundos entre `00` y `59`;
+- exactamente tres dígitos de milisegundos;
+- duración total mayor que cero.
+
+Por ejemplo, `1:05.250` es válido; `1:5.250`, `1:75.000`, `1:05.25` y `0:00.000` se rechazan. La aplicación también comprueba que la etapa sea un entero dentro del rango de la competición y que el participante pertenezca a ella.
 
 ## 6. Rellenar abandonos
 
@@ -168,7 +175,7 @@ La interfaz de consola usa la misma base y las mismas funciones de persistencia:
 python src/cli_main.py
 ```
 
-Permite listar, crear y borrar competiciones, ver datos, añadir tiempos, rellenar abandonos y penalizar. Está orientada a Windows porque limpia la pantalla con `cls`. Tiene menos validaciones que la GUI: una entrada no numérica puede cerrar el programa con un error. Para operación normal se recomienda la interfaz gráfica.
+Permite listar, crear y borrar competiciones, ver datos, añadir tiempos, rellenar abandonos y penalizar. Comparte con la GUI las validaciones de competiciones, etapas, participantes, tiempos y penalizaciones. Está orientada a Windows porque limpia la pantalla con `cls`; una opción de menú no numérica todavía puede cerrar el programa con un error. Para operación normal se recomienda la interfaz gráfica.
 
 ## 13. Mensajes frecuentes
 
