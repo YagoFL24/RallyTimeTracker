@@ -31,7 +31,7 @@ La GUI sigue una separación ligera entre presentación, servicios y persistenci
 | --- | --- | --- |
 | `src/main.py` | Entrada oficial | Importa y ejecuta `gui_tk.main()` |
 | `src/gui_tk.py` | Ventana, formularios, tabla, eventos y temas | `RallyApp`, `main()` |
-| `src/servicios.py` | Casos de uso, mensajes y validación básica | `RallyService` |
+| `src/servicios.py` | Casos de uso, mensajes y validación de dominio | `RallyService` |
 | `src/persistencia.py` | Ruta de datos, esquema y consultas SQLite | altas, bajas, lecturas, tiempos y conteos |
 | `src/gestorTiempos.py` | Conversión de unidades y orden de participantes | `tiempo_a_milisegundos`, `milisegundos_a_tiempo`, `orderParticipants` |
 | `src/cli_main.py` | Bucle interactivo de consola heredado | código ejecutado a nivel de módulo |
@@ -39,6 +39,7 @@ La GUI sigue una separación ligera entre presentación, servicios y persistenci
 | `.github/scripts/release.py` | SemVer, notas y actualización de changelog | cálculo a partir de commits |
 | `.github/workflows/release.yml` | CI de publicación | build Windows, commit, tag y GitHub Release |
 | `tests/test_release.py` | Regresión del versionado automático | tags, commits, prioridades e incrementos SemVer |
+| `tests/test_validaciones.py` | Validación funcional con SQLite temporal | tiempos, etapas, participantes y penalizaciones |
 
 Los imports de `src` son imports planos, no un paquete Python instalable. Por eso las entradas se ejecutan como archivos desde `src` y no mediante `python -m rally_time_tracker`.
 
@@ -155,24 +156,24 @@ La base `data/datos_template.db` existente en algunos entornos es una plantilla 
 ```text
 Formulario GUI
   -> RallyService.create_competition
-     -> valida nombre, duplicado, etapas y lista no vacía
+     -> normaliza y valida nombre, etapas y participantes únicos
      -> persistencia.add_competition
+        -> repite validaciones en el límite de persistencia
         -> INSERT competitions
-        -> SELECT id
-        -> INSERT participants, uno a uno
+        -> INSERT participants en la misma transacción
   -> refresco y selección
 ```
 
-La inserción de competición y participantes usa dos confirmaciones separadas. No hay una transacción explícita que revierta la competición si falla posteriormente un participante.
+La competición y sus participantes se confirman en una única transacción. Una colisión de nombre revierte toda el alta.
 
 ### Registrar tiempo
 
-`RallyService.add_time_str` convierte `m:ss.xxx` a milisegundos. `persistencia.add_time` busca una fila con la misma competición, etapa y texto de participante:
+`RallyService.add_time_str` exige `m:ss.xxx`, segundos entre `00` y `59`, tres milisegundos y duración positiva. Antes de convertir, comprueba que la etapa sea entera y esté en rango, y que el participante pertenezca a la competición. `persistencia.add_time` repite estas comprobaciones y busca una fila con la misma competición, etapa y texto de participante:
 
 - si existe, ejecuta `UPDATE`;
 - si no, ejecuta `INSERT`.
 
-No se valida en persistencia que el participante pertenezca a la competición ni que la etapa esté dentro del rango configurado.
+Las operaciones de abandonos y penalizaciones utilizan el mismo límite de validación. Una llamada directa a persistencia no puede guardar un tiempo decimal, nulo, negativo, fuera de rango o asociado a un participante desconocido.
 
 ### Rellenar abandonos
 

@@ -1,11 +1,25 @@
-from persistencia import *
+import re
+
+from persistencia import get_times
+
+
+MAX_SQLITE_INTEGER = (2**63) - 1
+TIME_PATTERN = re.compile(r"^(\d+):([0-5]\d)\.(\d{3})$")
 
 # Convierte un string de tiempo m:ss.xxx a milisegundos.
 def tiempo_a_milisegundos(tiempo_str):
-    minutos, segundos = tiempo_str.split(':')
-    minutos = int(minutos)
-    segundos = float(segundos)
-    return (minutos * 60 * 1000) + (segundos * 1000)
+    if not isinstance(tiempo_str, str):
+        raise ValueError("El tiempo debe ser texto con formato m:ss.xxx")
+
+    match = TIME_PATTERN.fullmatch(tiempo_str)
+    if not match:
+        raise ValueError("Formato de tiempo invalido")
+
+    minutos, segundos, milisegundos = (int(value) for value in match.groups())
+    total = (minutos * 60 * 1000) + (segundos * 1000) + milisegundos
+    if total <= 0 or total > MAX_SQLITE_INTEGER:
+        raise ValueError("El tiempo debe ser positivo y valido")
+    return total
 
 # Convierte milisegundos a string m:ss.xxx.
 def milisegundos_a_tiempo(milisegundos):

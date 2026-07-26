@@ -3,6 +3,47 @@ import sqlite3
 import sys
 
 
+MAX_SQLITE_INTEGER = (2**63) - 1
+MAX_NAME_LENGTH = 255
+
+
+def _is_strict_int(value):
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _is_positive_sqlite_int(value):
+    return _is_strict_int(value) and 0 < value <= MAX_SQLITE_INTEGER
+
+
+def _get_competition_for_stage(cursor, competition_name, number_of_stage):
+    if not isinstance(competition_name, str) or not competition_name.strip():
+        return None
+    if not _is_strict_int(number_of_stage):
+        return None
+
+    cursor.execute(
+        "SELECT id, competition_name, numberOfStages FROM competitions "
+        "WHERE competition_name = ?",
+        (competition_name.strip(),),
+    )
+    competition = cursor.fetchone()
+    if competition is None or not _is_strict_int(competition[2]):
+        return None
+    if not 1 <= number_of_stage <= competition[2]:
+        return None
+    return competition
+
+
+def _participant_exists(cursor, competition_id, participant):
+    if not isinstance(participant, str) or not participant.strip():
+        return False
+    cursor.execute(
+        "SELECT 1 FROM participants WHERE competition_id = ? AND participant_name = ?",
+        (competition_id, participant.strip()),
+    )
+    return cursor.fetchone() is not None
+
+
 # Resuelve la ruta de la base de datos segun entorno.
 def _get_db_path():
     if getattr(sys, "frozen", False):
@@ -48,20 +89,49 @@ def close_connection(conexion):
 
 # Inserta una competicion y sus participantes.
 def add_competition(competition_name, numberOfStages, participants):
-    conexion, cursor = start_connection()
+    if not isinstance(competition_name, str) or not competition_name.strip():
+        return False
+    competition_name = competition_name.strip()
+    if len(competition_name) > MAX_NAME_LENGTH:
+        return False
+    if not _is_strict_int(numberOfStages) or numberOfStages <= 0:
+        return False
+    if not isinstance(participants, (list, tuple)) or not participants:
+        return False
 
-    cursor.execute("INSERT INTO competitions (competition_name, numberOfStages) VALUES (?, ?)", (competition_name, numberOfStages))
-    conexion.commit()
-
-    cursor.execute("SELECT id FROM competitions where competition_name = ?", (competition_name,))
-    competitionId = cursor.fetchall()
-
-
+    normalized_participants = []
+    participant_keys = set()
     for participant in participants:
-        cursor.execute("INSERT INTO participants (competition_id, participant_name) VALUES (?,?)", (competitionId[0][0], participant))
-    conexion.commit()
-    
+        if not isinstance(participant, str) or not participant.strip():
+            return False
+        participant = participant.strip()
+        if len(participant) > MAX_NAME_LENGTH:
+            return False
+        participant_key = participant.casefold()
+        if participant_key in participant_keys:
+            return False
+        participant_keys.add(participant_key)
+        normalized_participants.append(participant)
+
+    conexion, cursor = start_connection()
+    try:
+        cursor.execute(
+            "INSERT INTO competitions (competition_name, numberOfStages) VALUES (?, ?)",
+            (competition_name, numberOfStages),
+        )
+        competition_id = cursor.lastrowid
+        cursor.executemany(
+            "INSERT INTO participants (competition_id, participant_name) VALUES (?, ?)",
+            [(competition_id, participant) for participant in normalized_participants],
+        )
+        conexion.commit()
+    except sqlite3.IntegrityError:
+        conexion.rollback()
+        close_connection(conexion)
+        return False
+
     close_connection(conexion)
+    return True
     
     
 # Elimina una competicion y sus datos asociados.
@@ -123,82 +193,120 @@ def get_participants(competition_id):
 
 # Inserta o actualiza un tiempo de participante.
 def add_time(competition_name, time, numberOfStage, participant):
-    conexion, cursor = start_connection()
-    
-    cursor.execute("SELECT id FROM competitions where competition_name = ?", (competition_name,))
-    competitionId = cursor.fetchall()
+    if not _is_positive_sqlite_int(time):
+        return False
 
-    if not competitionId:
+    conexion, cursor = start_connection()
+    competition = _get_competition_for_stage(cursor, competition_name, numberOfStage)
+    if competition is None or not _participant_exists(cursor, competition[0], participant):
         close_connection(conexion)
         return False
-    
-    cursor.execute("SELECT * FROM times where competition_id = ? and numberOfStage = ? AND participant = ?", (competitionId[0][0],numberOfStage, participant))
+
+    participant = participant.strip()
+    cursor.execute(
+        "SELECT 1 FROM times WHERE competition_id = ? AND numberOfStage = ? "
+        "AND participant = ?",
+        (competition[0], numberOfStage, participant),
+    )
     existing_time = cursor.fetchone()
-    
+
     if existing_time is not None:
-        cursor.execute("UPDATE times SET time = ? WHERE competition_id = ? AND numberOfStage = ? AND participant = ?", (time, competitionId[0][0], numberOfStage, participant))
+        cursor.execute(
+            "UPDATE times SET time = ? WHERE competition_id = ? "
+            "AND numberOfStage = ? AND participant = ?",
+            (time, competition[0], numberOfStage, participant),
+        )
     else:
-        cursor.execute("INSERT INTO times (competition_id, time, numberOfStage, participant) VALUES (?, ?, ?, ?)", (competitionId[0][0], time, numberOfStage, participant))
+        cursor.execute(
+            "INSERT INTO times (competition_id, time, numberOfStage, participant) "
+            "VALUES (?, ?, ?, ?)",
+            (competition[0], time, numberOfStage, participant),
+        )
     conexion.commit()
-    
+
     close_connection(conexion)
     return True
-    
+
 # Rellena abandonos con penalizacion base.
-def fill_times(competition_name,numberOfStage):
+def fill_times(competition_name, numberOfStage):
     conexion, cursor = start_connection()
-    
-    cursor.execute("SELECT id FROM competitions where competition_name = ?", (competition_name,))
-    competitionId = cursor.fetchall()
-    
-    if not competitionId:
+    competition = _get_competition_for_stage(cursor, competition_name, numberOfStage)
+    if competition is None:
         close_connection(conexion)
         return False
 
-    cursor.execute("SELECT time FROM times where competition_id = ? and numberOfStage = ? ORDER BY time desc", (competitionId[0][0],numberOfStage))
+    cursor.execute(
+        "SELECT time FROM times WHERE competition_id = ? AND numberOfStage = ? "
+        "ORDER BY time DESC",
+        (competition[0], numberOfStage),
+    )
     worst_time = cursor.fetchone()
-    
-    if worst_time is None:
+    if worst_time is None or not _is_positive_sqlite_int(worst_time[0]):
         close_connection(conexion)
         return False
-    
-    
-    cursor.execute("SELECT participant FROM times where competition_id = ? and numberOfStage = ? ", (competitionId[0][0],numberOfStage))
+
+    abandonment_time = worst_time[0] + 10000
+    if abandonment_time > MAX_SQLITE_INTEGER:
+        close_connection(conexion)
+        return False
+
+    cursor.execute(
+        "SELECT participant FROM times WHERE competition_id = ? AND numberOfStage = ?",
+        (competition[0], numberOfStage),
+    )
     participants = [p[0] for p in cursor.fetchall()]
-    
-    total_participants = get_participants(competitionId[0][0])
-    
+
+    cursor.execute(
+        "SELECT participant_name FROM participants WHERE competition_id = ?",
+        (competition[0],),
+    )
+    total_participants = [p[0] for p in cursor.fetchall()]
     missing_participants = [p for p in total_participants if p not in participants]
-    
+
     for participant in missing_participants:
-        cursor.execute("INSERT INTO times (competition_id, time, numberOfStage, participant) VALUES (?, ?, ?, ?)", (competitionId[0][0], worst_time[0] + 10000, numberOfStage, participant))
-        
+        cursor.execute(
+            "INSERT INTO times (competition_id, time, numberOfStage, participant) "
+            "VALUES (?, ?, ?, ?)",
+            (competition[0], abandonment_time, numberOfStage, participant),
+        )
+
     conexion.commit()
     close_connection(conexion)
     return True
-    
+
 # Aplica penalizacion en milisegundos.
 def fill_times_penalitation(competition_name, numberOfStage, participant, penalty_ms):
+    if not _is_positive_sqlite_int(penalty_ms):
+        return False
+
     conexion, cursor = start_connection()
-    
-    cursor.execute("SELECT id FROM competitions where competition_name = ?", (competition_name,))
-    competitionId = cursor.fetchall()
-    
-    if not competitionId:
+    competition = _get_competition_for_stage(cursor, competition_name, numberOfStage)
+    if competition is None or not _participant_exists(cursor, competition[0], participant):
         close_connection(conexion)
         return False
 
-    cursor.execute("SELECT time FROM times where competition_id = ? and numberOfStage = ? AND participant = ?", (competitionId[0][0],numberOfStage,participant))
+    participant = participant.strip()
+    cursor.execute(
+        "SELECT time FROM times WHERE competition_id = ? AND numberOfStage = ? "
+        "AND participant = ?",
+        (competition[0], numberOfStage, participant),
+    )
     time = cursor.fetchone()
-    if time is None:
+    if time is None or not _is_positive_sqlite_int(time[0]):
         close_connection(conexion)
         return False
-    time = time[0] + penalty_ms
-    
-    
-    cursor.execute(" UPDATE times SET time = ? WHERE competition_id = ? AND numberOfStage = ? AND participant = ?", (time,competitionId[0][0], numberOfStage, participant))
 
-        
+    penalized_time = time[0] + penalty_ms
+    if penalized_time > MAX_SQLITE_INTEGER:
+        close_connection(conexion)
+        return False
+
+    cursor.execute(
+        "UPDATE times SET time = ? WHERE competition_id = ? "
+        "AND numberOfStage = ? AND participant = ?",
+        (penalized_time, competition[0], numberOfStage, participant),
+    )
+
     conexion.commit()
     close_connection(conexion)
     return True
