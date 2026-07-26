@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.1.2 - 2026-07-26
+
+- Merge pull request #10 from YagoFL24/test/ampliar-cobertura-automatizada
+- test: ampliar la cobertura automatizada
 ## v1.1.1 - 2026-07-26
 
 - Merge pull request #9 from YagoFL24/fix/validacion-tiempos-etapas-participantes
