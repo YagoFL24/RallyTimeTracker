@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.1.3 - 2026-07-26
+
+- Merge pull request #11 from YagoFL24/fix/limpiar-estado-tras-borrado
+- fix: limpiar el estado visual tras borrar una competicion
 ## v1.1.2 - 2026-07-26
 
 - Merge pull request #10 from YagoFL24/test/ampliar-cobertura-automatizada
