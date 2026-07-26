@@ -5,19 +5,32 @@ import subprocess
 from typing import List, Tuple
 
 
+SEMVER_NUMBER = r"(?:0|[1-9]\d*)"
+SEMVER_TAG_RE = re.compile(
+    rf"^v({SEMVER_NUMBER})\.({SEMVER_NUMBER})\.({SEMVER_NUMBER})$"
+)
+CONVENTIONAL_HEADER_RE = re.compile(
+    r"^(?P<type>[A-Za-z][A-Za-z0-9_-]*)(?:\([^\r\n)]+\))?(?P<breaking>!)?:"
+)
+BREAKING_FOOTER_RE = re.compile(r"^BREAKING(?: |-)CHANGE:\s*", re.MULTILINE)
+
+
 def run(cmd: List[str]) -> str:
     return subprocess.check_output(cmd, text=True).strip()
 
 
 def get_latest_tag() -> str:
     try:
-        return run(["git", "tag", "--list", "v*", "--sort=-v:refname"]).splitlines()[0]
-    except Exception:
+        tags = run(
+            ["git", "tag", "--merged", "HEAD", "--list", "v*", "--sort=-v:refname"]
+        ).splitlines()
+    except (OSError, subprocess.SubprocessError):
         return ""
+    return next((tag for tag in tags if SEMVER_TAG_RE.fullmatch(tag)), "")
 
 
 def parse_version(tag: str) -> Tuple[int, int, int]:
-    match = re.match(r"v(\\d+)\\.(\\d+)\\.(\\d+)", tag)
+    match = SEMVER_TAG_RE.fullmatch(tag)
     if not match:
         return (0, 0, 0)
     return tuple(int(x) for x in match.groups())
@@ -35,12 +48,19 @@ def get_commits_since(tag: str) -> List[str]:
 def decide_bump(commits: List[str]) -> str:
     if not commits:
         return ""
+
     for entry in commits:
-        if "BREAKING CHANGE" in entry or re.search(r"^\\w+!:", entry, re.MULTILINE):
+        header = entry.partition("\n")[0].strip()
+        match = CONVENTIONAL_HEADER_RE.match(header)
+        if BREAKING_FOOTER_RE.search(entry) or (match and match.group("breaking")):
             return "major"
+
     for entry in commits:
-        if re.search(r"^feat(\\(.+\\))?:", entry, re.MULTILINE):
+        header = entry.partition("\n")[0].strip()
+        match = CONVENTIONAL_HEADER_RE.match(header)
+        if match and match.group("type").lower() == "feat":
             return "minor"
+
     return "patch"
 
 
@@ -50,7 +70,9 @@ def bump_version(version: Tuple[int, int, int], bump: str) -> Tuple[int, int, in
         return (major + 1, 0, 0)
     if bump == "minor":
         return (major, minor + 1, 0)
-    return (major, minor, patch + 1)
+    if bump == "patch":
+        return (major, minor, patch + 1)
+    raise ValueError(f"Tipo de incremento no valido: {bump}")
 
 
 def build_changelog_section(version: str, commits: List[str]) -> str:

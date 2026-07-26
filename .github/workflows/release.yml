@@ -24,6 +24,9 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Test release logic
+        run: python -m unittest discover -s tests -p "test_*.py" -v
+
       - name: Prepare release
         id: prep
         run: python .github/scripts/release.py

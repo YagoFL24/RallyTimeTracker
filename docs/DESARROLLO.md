@@ -43,7 +43,13 @@ No uses una base real para pruebas destructivas. Crea un directorio temporal, ca
 
 ## 4. Pruebas y controles
 
-El repositorio no contiene actualmente archivos de test ni configuración de lint, formato, tipos o cobertura.
+El repositorio contiene pruebas unitarias para el versionado automático. Todavía no hay pruebas funcionales de la aplicación ni configuración de lint, formato, tipos o cobertura.
+
+Ejecutar las pruebas disponibles:
+
+```bash
+python -m unittest discover -s tests -p "test_*.py" -v
+```
 
 Control de sintaxis sin iniciar la GUI:
 
@@ -114,23 +120,25 @@ El script pretende aplicar SemVer según Conventional Commits:
 
 Después antepone una sección a `CHANGELOG.md`, genera `release_notes.md` y escribe `version`, `release_notes` y `release` en `GITHUB_OUTPUT`.
 
-### Limitación actual del versionado
+### Validación del versionado
 
-Las expresiones regulares del script tienen barras invertidas duplicadas. Las comprobaciones realizadas sobre el código actual muestran:
+Antes de preparar una release, el workflow ejecuta `tests/test_release.py`. La publicación se detiene si falla cualquiera de estos comportamientos:
 
-- `parse_version("v1.2.3")` devuelve `(0, 0, 0)`;
-- `feat: ...` sí se reconoce como minor;
-- `feat(ui): ...` cae en patch;
-- `feat!: ...` cae en patch;
-- un cuerpo con `BREAKING CHANGE` sí se reconoce como major.
+- lectura estricta de tags `vX.Y.Z`;
+- descarte de tags que empiezan por `v` pero no son SemVer válido;
+- `feat:` y `feat(ámbito):` como incremento minor;
+- `tipo!:` y `tipo(ámbito)!:` como incremento major;
+- footers `BREAKING CHANGE:` y `BREAKING-CHANGE:` como incremento major;
+- prioridad de major sobre minor y patch;
+- incremento correcto de cada componente SemVer.
 
-Esto puede producir versiones incorrectas, etiquetas repetidas y changelogs duplicados. Debe corregirse y probarse antes de confiar en una nueva publicación.
+Un tipo de incremento desconocido provoca un error explícito en lugar de convertirse silenciosamente en patch.
 
 ## 7. CHANGELOG y commits
 
-El `CHANGELOG.md` actual contiene secciones repetidas y texto histórico generado más de una vez. Hasta estabilizar el script:
+El `CHANGELOG.md` conserva secciones repetidas generadas por versiones anteriores del script. Aunque el cálculo actual está cubierto por pruebas, conviene limpiar este histórico en un cambio separado. Para cada publicación:
 
-- revisa la versión calculada antes de hacer merge a `main`;
+- revisa la versión esperada antes de hacer merge a `main`;
 - usa asuntos Conventional Commits coherentes;
 - evita editar o etiquetar automáticamente desde una prueba local;
 - limpia el changelog en un cambio separado y revisable.
@@ -179,9 +187,8 @@ Hay archivos `__pycache__` históricos ya versionados; ignorarlos no los elimina
 - Completar el smoke test de la GUI sobre una base descartable.
 - Confirmar ruta e iconos del ejecutable.
 - Verificar la lectura/escritura en `%LOCALAPPDATA%`.
-- Validar versión SemVer y tag contra los tags existentes.
+- Ejecutar `tests/test_release.py` y validar el tag esperado contra los tags existentes.
 - Revisar la nueva sección de `CHANGELOG.md`.
 - Probar el EXE en una máquina Windows limpia.
 - Hacer una copia de una base real y comprobar compatibilidad.
 - Verificar que no se incluyan bases, participantes ni artefactos locales en Git.
-

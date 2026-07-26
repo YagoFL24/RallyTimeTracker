@@ -38,6 +38,7 @@ La GUI sigue una separación ligera entre presentación, servicios y persistenci
 | `src/interfaz.py` | Menús y tabla de texto de la CLI | `menuPrincipal`, `cargarCompeticiones`, `menuCompeticion`, `mostrarDatos` |
 | `.github/scripts/release.py` | SemVer, notas y actualización de changelog | cálculo a partir de commits |
 | `.github/workflows/release.yml` | CI de publicación | build Windows, commit, tag y GitHub Release |
+| `tests/test_release.py` | Regresión del versionado automático | tags, commits, prioridades e incrementos SemVer |
 
 Los imports de `src` son imports planos, no un paquete Python instalable. Por eso las entradas se ejecutan como archivos desde `src` y no mediante `python -m rally_time_tracker`.
 
@@ -219,4 +220,3 @@ La capa de servicio transforma algunos resultados esperados en pares `(éxito, m
 No se capturan de forma general excepciones SQLite, errores de permisos, corrupción del archivo ni fallos inesperados de renderizado. Tampoco hay bloqueo de aplicación única. SQLite serializa escrituras, pero la aplicación no está diseñada para que varias instancias editen simultáneamente la misma competición.
 
 La aplicación no maneja credenciales ni red. Los datos quedan en texto estructurado dentro de un archivo local SQLite, sin cifrado. La protección y copia del archivo dependen del sistema operativo y del usuario.
-

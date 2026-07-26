@@ -9,11 +9,11 @@ Comprobaciones realizadas el 26 de julio de 2026:
 - sintaxis correcta en los ocho archivos Python de fuente y automatización;
 - esquema leído en modo solo lectura;
 - flujo aislado sobre una base temporal: crear, añadir, sobrescribir, clasificar, rellenar abandonos, penalizar y validar entradas límite;
-- funciones de cálculo SemVer probadas directamente;
+- funciones de cálculo SemVer probadas directamente y cubiertas por pruebas unitarias;
 - revisión de tags, historial y archivos versionados;
 - no se abrió ni modificó la base de trabajo real.
 
-No existe suite automatizada. La ventana no se sometió a una prueba gráfica automatizada y el ejecutable local no se reconstruyó durante esta revisión.
+Existe una suite automatizada para el versionado. La funcionalidad de la aplicación aún no tiene tests automatizados, la ventana no se sometió a una prueba gráfica automatizada y el ejecutable local no se reconstruyó durante esta revisión.
 
 ## 2. Funciones confirmadas
 
@@ -28,6 +28,7 @@ No existe suite automatizada. La ventana no se sometió a una prueba gráfica au
 | Borrado de datos asociados | Funciona mediante borrado manual |
 | Persistencia entre sesiones | Soportada por SQLite local |
 | Selección de primera etapa incompleta | Funciona por conteo de filas |
+| SemVer y Conventional Commits | Cubierto por pruebas unitarias |
 | Build automatizado de Windows | Configurado, no reconstruido en esta revisión |
 
 ## 3. Problemas de prioridad alta
@@ -49,12 +50,6 @@ Impacto: la tabla puede atribuir un tiempo al tramo equivocado.
 La API acepta etapas fuera del rango de la competición y el parser admite valores como `1:75.000`. Persistencia tampoco verifica que el texto del participante pertenezca a la competición.
 
 Impacto: datos válidos para SQLite pero inválidos para el dominio, con posibles resultados o errores de renderizado incoherentes.
-
-### Automatización SemVer defectuosa
-
-Las expresiones regulares escapadas de más impiden interpretar una etiqueta estándar y varios formatos de Conventional Commits. El changelog ya contiene secciones duplicadas.
-
-Impacto: versión errónea, colisión de tags o fallo de publicación.
 
 ## 4. Problemas de prioridad media
 
@@ -91,7 +86,7 @@ Construir el ranking consulta los tiempos dos veces por participante y abre una 
 - La CLI no captura entradas inválidas y usa `cls`, específico de Windows.
 - La creación de competición no es una única transacción atómica.
 - `varchar2` funciona por afinidad flexible de SQLite, pero no es un tipo idiomático de SQLite.
-- No hay tests, linter, formateador, type checking ni cobertura configurados.
+- Solo el versionado tiene tests; no hay tests de aplicación, linter, formateador, type checking ni cobertura configurados.
 - No hay metadatos de paquete, versión visible en la aplicación ni archivo de licencia.
 - Hay bytecode histórico versionado a pesar de estar ignorado actualmente.
 - El `.spec` local no coincide con el comando de build del workflow.
@@ -106,7 +101,7 @@ Hasta corregir los problemas de clasificación:
 4. evita participantes duplicados;
 5. mantén una copia de `datos.db` antes de correcciones o borrados masivos;
 6. no ejecutes dos instancias sobre la misma base;
-7. revisa manualmente cada versión antes de publicar desde `main`.
+7. ejecuta las pruebas de release y revisa el tag esperado antes de publicar desde `main`.
 
 ## 7. Criterio sugerido de estabilización
 
@@ -117,6 +112,6 @@ Una siguiente versión puede considerarse apta para operación fiable cuando:
 - todas las entradas se validan en el servicio y se respaldan con restricciones SQLite;
 - existe una migración compatible con bases actuales;
 - los casos de uso principales tienen pruebas temporales automatizadas;
-- el release calcula correctamente tags y Conventional Commits;
+- el release sigue superando sus pruebas de tags y Conventional Commits;
 - el borrado limpia inmediatamente el estado de la GUI;
 - se ha probado el ejecutable contra una copia de una base real.

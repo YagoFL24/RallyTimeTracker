@@ -86,7 +86,7 @@ RallyTimeTracker/
 └── README.md
 ```
 
-`build/`, `dist/`, las bases de datos, los ejecutables y los archivos `.spec` son artefactos locales ignorados por Git. El repositorio no contiene actualmente una suite automatizada de pruebas ni un archivo de licencia.
+`build/`, `dist/`, las bases de datos, los ejecutables y los archivos `.spec` son artefactos locales ignorados por Git. El repositorio contiene pruebas automatizadas para el versionado, pero todavía no para la funcionalidad de la aplicación. Tampoco contiene un archivo de licencia.
 
 ## Ejecutable de Windows
 
