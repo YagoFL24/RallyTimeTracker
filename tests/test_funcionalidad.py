@@ -3,6 +3,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -242,7 +243,103 @@ class FakeCombo:
         self.selected = value
 
 
+class FakeListbox:
+    def __init__(self, items, selected_index=None):
+        self.items = list(items)
+        self.selected_index = selected_index
+
+    def curselection(self):
+        if self.selected_index is None:
+            return ()
+        return (self.selected_index,)
+
+    def get(self, index):
+        return self.items[index]
+
+    def delete(self, _first, _last):
+        self.items = []
+        self.selected_index = None
+
+    def insert(self, _index, value):
+        self.items.append(value)
+
+    def size(self):
+        return len(self.items)
+
+    def selection_clear(self, _first, _last):
+        self.selected_index = None
+
+    def selection_set(self, index):
+        self.selected_index = index
+
+    def activate(self, _index):
+        pass
+
+
+class FakeLabel:
+    def __init__(self):
+        self.text = None
+
+    def config(self, text):
+        self.text = text
+
+
 class GuiLogicTests(unittest.TestCase):
+    def test_delete_clears_stale_selection_table_and_action_controls(self):
+        class FakeService:
+            def __init__(self):
+                self.deleted_name = None
+
+            def delete_competition(self, name):
+                self.deleted_name = name
+                return True, "Competicion borrada."
+
+            @staticmethod
+            def list_competitions():
+                return ["Rally Sur"]
+
+        class FakeView:
+            service = FakeService()
+            competition_list = FakeListbox(
+                ["Rally Norte", "Rally Sur"], selected_index=0
+            )
+            current_competition = {"name": "Rally Norte"}
+            current_leaderboard = [{"participant": "Ana"}]
+            header_label = FakeLabel()
+            table_cleared = False
+            action_sources = None
+            status = None
+
+            refresh_competitions = RallyApp.refresh_competitions
+            _select_competition_by_name = RallyApp._select_competition_by_name
+            _reset_competition_view = RallyApp._reset_competition_view
+
+            def set_status(self, message, ok=True):
+                self.status = (message, ok)
+
+            def _clear_table(self):
+                self.table_cleared = True
+
+            def _update_action_sources(self, participants, stages):
+                self.action_sources = (participants, stages)
+
+            def on_select_competition(self):
+                raise AssertionError("No se debe seleccionar una competicion diferente")
+
+        view = FakeView()
+        with mock.patch("gui_tk.messagebox.askyesno", return_value=True):
+            RallyApp.delete_selected_competition(view)
+
+        self.assertEqual(view.service.deleted_name, "Rally Norte")
+        self.assertEqual(view.competition_list.items, ["Rally Sur"])
+        self.assertIsNone(view.competition_list.selected_index)
+        self.assertIsNone(view.current_competition)
+        self.assertEqual(view.current_leaderboard, [])
+        self.assertEqual(view.header_label.text, "Selecciona una competicion")
+        self.assertTrue(view.table_cleared)
+        self.assertEqual(view.action_sources, ([], 0))
+        self.assertEqual(view.status, ("Competicion borrada.", True))
+
     def test_table_sorting_handles_text_totals_and_missing_stage_times(self):
         rows = [
             {"participant": "Luis", "total": 130, "diff": 10, "stage_times": [60, 70]},
