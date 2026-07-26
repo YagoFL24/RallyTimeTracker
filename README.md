@@ -70,7 +70,7 @@ Para hacer una copia de seguridad, cierra la aplicación y copia `datos.db`. La 
 RallyTimeTracker/
 ├── .github/
 │   ├── scripts/release.py       # Cálculo de versión y changelog
-│   └── workflows/release.yml    # Build y publicación en GitHub
+│   └── workflows/               # Pruebas, build y publicación en GitHub
 ├── assets/images/               # PNG e icono de la aplicación
 ├── data/                        # Bases locales; ignorado por Git
 ├── docs/                        # Documentación funcional y técnica
@@ -82,11 +82,15 @@ RallyTimeTracker/
 │   ├── gestorTiempos.py         # Conversión y ordenación de tiempos
 │   ├── cli_main.py              # Entrada de la CLI heredada
 │   └── interfaz.py              # Presentación de la CLI
+├── tests/
+│   ├── test_funcionalidad.py    # Flujos funcionales y lógica de GUI
+│   ├── test_validaciones.py     # Reglas y límites de entrada
+│   └── test_release.py          # SemVer, changelog y publicación
 ├── CHANGELOG.md
 └── README.md
 ```
 
-`build/`, `dist/`, las bases de datos, los ejecutables y los archivos `.spec` son artefactos locales ignorados por Git. El repositorio contiene pruebas automatizadas para el versionado y las reglas de validación, pero todavía no para toda la funcionalidad de la aplicación. Tampoco contiene un archivo de licencia.
+`build/`, `dist/`, las bases de datos, los ejecutables y los archivos `.spec` son artefactos locales ignorados por Git. La suite automatizada cubre validación, persistencia, clasificación completa, abandonos, penalizaciones, lógica de tabla y publicación. Todavía no sustituye una prueba gráfica del ejecutable ni cubre las limitaciones funcionales documentadas. El repositorio tampoco contiene un archivo de licencia.
 
 ## Ejecutable de Windows
 

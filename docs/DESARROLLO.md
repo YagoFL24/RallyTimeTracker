@@ -43,7 +43,19 @@ No uses una base real para pruebas destructivas. Crea un directorio temporal, ca
 
 ## 4. Pruebas y controles
 
-El repositorio contiene pruebas unitarias para el versionado automático y pruebas funcionales de validación sobre bases SQLite temporales. Todavía no hay cobertura automatizada de toda la GUI, clasificación o migraciones, ni configuración de lint, formato, tipos o cobertura.
+El repositorio contiene 50 pruebas unitarias y funcionales. Las operaciones de datos se ejecutan sobre bases SQLite temporales, nunca sobre `data/datos.db`.
+
+Cobertura automatizada actual:
+
+- parsing y formato de tiempos;
+- validación de competiciones, etapas, participantes y penalizaciones;
+- ciclo completo de alta, consulta, persistencia y borrado;
+- clasificación cuando todos los tiempos están completos y selección de etapa pendiente;
+- abandonos, acumulación de penalizaciones y protección frente a overflow;
+- ordenación de tabla y carga de combos sin levantar una ventana real;
+- SemVer, lectura de commits, changelog, notas y salidas de GitHub Actions.
+
+Todavía no hay automatización de la renderización gráfica real, interacción con diálogos, empaquetado ejecutable, migraciones SQLite futuras ni los escenarios de clasificación incompleta que constan como defectos conocidos. Tampoco hay linter, formateador, comprobación de tipos o informe porcentual de cobertura.
 
 Ejecutar las pruebas disponibles:
 
@@ -56,6 +68,8 @@ Control de sintaxis sin iniciar la GUI:
 ```bash
 python -m compileall src .github/scripts
 ```
+
+`.github/workflows/tests.yml` ejecuta ambos controles con Python 3.12 en Windows para cada pull request, cada push a una rama distinta de `main` y cuando se inicia manualmente. El workflow de release vuelve a ejecutar la suite completa al llegar a `main`.
 
 Comprobación manual mínima recomendada:
 
@@ -122,7 +136,7 @@ Después antepone una sección a `CHANGELOG.md`, genera `release_notes.md` y esc
 
 ### Validación del versionado
 
-Antes de preparar una release, el workflow ejecuta `tests/test_release.py`. La publicación se detiene si falla cualquiera de estos comportamientos:
+Antes de preparar una release, el workflow ejecuta los tres módulos de pruebas. La publicación se detiene si falla la funcionalidad o cualquiera de estos comportamientos de release:
 
 - lectura estricta de tags `vX.Y.Z`;
 - descarte de tags que empiezan por `v` pero no son SemVer válido;
@@ -183,11 +197,11 @@ Hay archivos `__pycache__` históricos ya versionados; ignorarlos no los elimina
 
 ## 10. Lista de comprobación antes de publicar
 
-- Ejecutar pruebas automatizadas cuando existan.
+- Confirmar que el workflow `Tests` está en verde y ejecutar localmente la suite completa.
 - Completar el smoke test de la GUI sobre una base descartable.
 - Confirmar ruta e iconos del ejecutable.
 - Verificar la lectura/escritura en `%LOCALAPPDATA%`.
-- Ejecutar `tests/test_release.py` y validar el tag esperado contra los tags existentes.
+- Validar el tag esperado contra los tags existentes.
 - Revisar la nueva sección de `CHANGELOG.md`.
 - Probar el EXE en una máquina Windows limpia.
 - Hacer una copia de una base real y comprobar compatibilidad.
