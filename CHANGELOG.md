@@ -1,5 +1,8 @@
 # Changelog
 
+## v1.1.0 - 2026-07-26
+
+- feat: aÃ±adir documentacion y corregir el versionado automatico
 ## v1.0.0 - 2026-01-13
 
 - fix: Update README with project structure details
