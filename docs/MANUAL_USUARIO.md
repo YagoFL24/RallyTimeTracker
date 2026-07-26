@@ -88,7 +88,7 @@ Por ejemplo, `1:05.250` es válido; `1:5.250`, `1:75.000`, `1:05.25` y `0:00.000
 
 ## 6. Rellenar abandonos
 
-Esta operación asigna un tiempo a todos los participantes que aún no tienen registro en una etapa.
+Esta operación marca como **No finalizado** a todos los participantes activos que siguen pendientes en una etapa. No los retira del rally: pueden continuar en los tramos posteriores.
 
 1. Debe existir al menos un tiempo en el tramo elegido.
 2. Selecciona la etapa en **Rellenar abandonos**.
@@ -102,9 +102,21 @@ tiempo de abandono = peor tiempo ya registrado en el tramo + 10 segundos
 
 Todos los participantes ausentes reciben el mismo valor. Si la etapa no tiene ningún tiempo base, no se modifica nada y aparece el aviso «No hay tiempos base para esa etapa».
 
-La penalización fija de 10 segundos no es configurable en la versión actual. Los valores rellenados son tiempos ordinarios en la base de datos: no conservan una marca que indique que proceden de un abandono.
+La penalización fija de 10 segundos no es configurable en la versión actual. El estado queda registrado explícitamente y se muestra como `NF` junto al tiempo asignado.
 
-## 7. Aplicar una penalización
+## 7. Estados y abandono del rally
+
+En **Estado del participante y tramo** puedes seleccionar participante, tramo y uno de estos estados:
+
+- **Pendiente**: todavía no existe un resultado definitivo;
+- **Finalizado**: exige un tiempo `m:ss.xxx`;
+- **No finalizado**: recibe el peor tiempo del tramo más 10 segundos y continúa en el rally;
+- **No presentado**: no tiene tiempo en ese tramo, pero puede participar en los siguientes;
+- **Descalificado**: queda fuera de la clasificación, aunque sus datos se conservan.
+
+**Retirar** es una operación distinta. Permite indicar que el piloto abandona definitivamente después de finalizar el tramo o durante él. En el segundo caso se registra primero el tramo como no finalizado. Sus tiempos anteriores se conservan y aparece después de todos los pilotos que continúan activos. **Reactivar** permite devolverlo al rally y editar después sus estados.
+
+## 8. Aplicar una penalización
 
 En **Penalizar**:
 
@@ -116,29 +128,28 @@ La aplicación convierte los segundos a milisegundos y los suma al tiempo existe
 
 No es posible penalizar una combinación participante/etapa que aún no tenga tiempo. Tampoco existe una operación específica para retirar una sanción; habría que volver a guardar manualmente el tiempo correcto.
 
-## 8. Clasificación
+## 9. Clasificación
 
 La tabla contiene:
 
 - **Pos**: posición calculada por el tiempo total;
 - **Piloto**: nombre del participante;
+- **Estado**: clasificado, retirado, pendiente o no presentado;
 - **Tramo N**: tiempo mostrado para cada etapa;
 - **General**: suma de los registros recuperados para el participante;
 - **Dif.**: diferencia respecto al primer clasificado.
 
-Los tiempos se almacenan en milisegundos y se muestran como `m:ss.xxx`. Un tramo sin dato se representa como `--:--.---`.
+Los tiempos se almacenan en milisegundos y se muestran como `m:ss.xxx`. Un tramo sin ningún tiempo todavía se muestra como `-`; cuando el tramo ya ha comenzado, los pilotos activos sin resultado muestran `Pendiente`. La tabla usa además `NF`, `NP` y `DSQ` para los estados explícitos.
 
 Puedes pulsar cualquier cabecera para ordenar la vista en sentido ascendente. La ordenación no alterna entre ascendente y descendente. Ordenar la vista tampoco recalcula el número de posición: **Pos** sigue representando el ranking general original.
 
-### Importante sobre resultados incompletos
+La clasificación coloca primero a todos los pilotos que continúan activos y después a los retirados; los descalificados no aparecen. Dentro de cada grupo se prioriza el mayor número de tramos completados y después el menor tiempo acumulado. Así, un retirado nunca ocupa el primer puesto mientras quede algún piloto activo. Las diferencias provisionales se calculan entre pilotos del mismo grupo y con el mismo número de tramos con tiempo; quien todavía no tiene ningún tiempo muestra `-`. Cada resultado permanece en la columna de su tramo aunque existan huecos anteriores.
 
-En el estado actual, el total suma únicamente los tiempos existentes. Por ello, un piloto sin tiempos tiene total cero y puede aparecer delante de quienes sí han participado. Además, si falta un tramo anterior pero existe uno posterior, el dato posterior puede aparecer desplazado a la primera columna disponible. No se debe considerar definitiva la clasificación hasta completar todas las etapas. Consulta [Estado y limitaciones](ESTADO_Y_LIMITACIONES.md).
-
-## 9. Cambiar de tema
+## 10. Cambiar de tema
 
 El botón situado bajo la lista de competiciones alterna los colores claro y oscuro. La preferencia vive solo durante la sesión: al reiniciar, la aplicación vuelve a iniciar en modo oscuro.
 
-## 10. Eliminar una competición
+## 11. Eliminar una competición
 
 1. Selecciona una competición.
 2. Pulsa **Borrar**.
@@ -146,9 +157,9 @@ El botón situado bajo la lista de competiciones alterna los colores claro y osc
 
 Se eliminan permanentemente la competición, sus participantes y sus tiempos. No hay papelera ni deshacer. Haz una copia de seguridad antes de borrar información relevante.
 
-Existe una limitación visual: tras borrar, la tabla anterior puede permanecer visible hasta pulsar **Refrescar** o elegir otra competición. Los datos sí se han eliminado de la base cuando aparece el mensaje de éxito.
+Tras borrar, la selección, la tabla y los formularios se limpian inmediatamente.
 
-## 11. Base de datos y copias de seguridad
+## 12. Base de datos y copias de seguridad
 
 Ubicaciones:
 
@@ -157,7 +168,7 @@ Ubicaciones:
 | `python src/main.py` | `<directorio desde el que se ejecuta>/data/datos.db` |
 | `.exe` de PyInstaller | `%LOCALAPPDATA%\RallyTimeTracker\datos.db` |
 
-La base y sus tablas se crean automáticamente al abrir la aplicación por primera vez.
+La base y sus tablas se crean automáticamente al abrir la aplicación por primera vez. Una base anterior se migra al esquema de estados y crea antes `datos.v1.backup.db`; los tiempos existentes pasan a **Finalizado** y los huecos a **Pendiente**.
 
 Para copiar o restaurar:
 
@@ -167,7 +178,7 @@ Para copiar o restaurar:
 
 No sustituyas la base mientras la aplicación realiza una operación.
 
-## 12. CLI heredada
+## 13. CLI heredada
 
 La interfaz de consola usa la misma base y las mismas funciones de persistencia:
 
@@ -177,7 +188,7 @@ python src/cli_main.py
 
 Permite listar, crear y borrar competiciones, ver datos, añadir tiempos, rellenar abandonos y penalizar. Comparte con la GUI las validaciones de competiciones, etapas, participantes, tiempos y penalizaciones. Está orientada a Windows porque limpia la pantalla con `cls`; una opción de menú no numérica todavía puede cerrar el programa con un error. Para operación normal se recomienda la interfaz gráfica.
 
-## 13. Mensajes frecuentes
+## 14. Mensajes frecuentes
 
 | Mensaje | Acción recomendada |
 | --- | --- |

@@ -3,7 +3,6 @@ from decimal import Decimal, InvalidOperation
 from gestorTiempos import (
     MAX_SQLITE_INTEGER,
     milisegundos_a_tiempo,
-    orderParticipants,
     tiempo_a_milisegundos,
 )
 from persistencia import (
@@ -15,13 +14,24 @@ from persistencia import (
     get_competition,
     get_competitions,
     get_participants,
-    get_stage_counts,
-    get_times,
+    get_participant_records,
+    get_stage_results,
+    reactivate_participant,
+    retire_participant,
+    set_stage_status,
 )
 
 
 class RallyService:
     MAX_NAME_LENGTH = 255
+    STATUS_LABELS = {
+        "pending": "Pendiente",
+        "finished": "Finalizado",
+        "stage_dnf": "No finalizado",
+        "dns": "No presentado",
+        "dsq": "Descalificado",
+    }
+    STATUS_VALUES = {label: value for value, label in STATUS_LABELS.items()}
 
     # Devuelve nombres de competiciones disponibles.
     def list_competitions(self):
@@ -33,13 +43,19 @@ class RallyService:
         if competition is None:
             return None
         competition_id, name, stages = competition
-        participants = get_participants(competition_id)
-        leaderboard = self._build_leaderboard(competition_id, stages, participants)
+        participant_records = get_participant_records(competition_id)
+        participants = [row["participant_name"] for row in participant_records]
+        results = get_stage_results(competition_id)
+        leaderboard = self._build_leaderboard(
+            competition_id, stages, participant_records, results
+        )
         return {
             "id": competition_id,
             "name": name,
             "stages": stages,
             "participants": participants,
+            "participant_records": participant_records,
+            "results": results,
             "leaderboard": leaderboard,
         }
 
@@ -124,6 +140,61 @@ class RallyService:
             return False, "No hay tiempos base para esa etapa."
         return True, "Abandonos rellenados."
 
+    # Cambia el estado explicito de un participante en un tramo.
+    def set_result_status(self, competition_name, participant, stage, status, time_str=None):
+        competition, participant, error = self._validate_stage_context(
+            competition_name, stage, participant
+        )
+        if error:
+            return False, error
+        status = self.STATUS_VALUES.get(status, status)
+        if status not in self.STATUS_LABELS:
+            return False, "Estado de tramo no valido."
+
+        time_ms = None
+        if status == "finished":
+            if not isinstance(time_str, str) or not time_str.strip():
+                return False, "Un resultado finalizado necesita un tiempo."
+            try:
+                time_ms = tiempo_a_milisegundos(time_str.strip())
+            except (TypeError, ValueError):
+                return False, "Formato de tiempo invalido. Use m:ss.xxx."
+
+        ok = set_stage_status(
+            competition[1], stage, participant, status, time_ms=time_ms
+        )
+        if not ok:
+            if status == "stage_dnf":
+                return False, "No hay un tiempo base para calcular la penalizacion."
+            return False, "No se pudo cambiar el estado del tramo."
+        return True, f"Estado actualizado: {self.STATUS_LABELS[status]}."
+
+    # Retira al participante del rally despues o durante el tramo indicado.
+    def retire_from_rally(self, competition_name, participant, stage, completed_stage):
+        competition, participant, error = self._validate_stage_context(
+            competition_name, stage, participant
+        )
+        if error:
+            return False, error
+        if not isinstance(completed_stage, bool):
+            return False, "Debe indicar como termino el tramo."
+        ok = retire_participant(
+            competition[1], stage, participant, completed_stage
+        )
+        if not ok:
+            if completed_stage:
+                return False, "Registre primero el tiempo final del tramo."
+            return False, "No hay un tiempo base para registrar el abandono."
+        return True, "Participante retirado del rally."
+
+    # Devuelve un participante retirado al estado activo.
+    def reactivate(self, competition_name, participant):
+        if not isinstance(competition_name, str) or not isinstance(participant, str):
+            return False, "Participante no valido."
+        if not reactivate_participant(competition_name, participant):
+            return False, "El participante no esta retirado."
+        return True, "Participante reactivado."
+
     # Aplica penalizacion en segundos a un participante.
     def penalize(self, competition_name, stage, participant, penalty_seconds):
         competition, participant, error = self._validate_stage_context(
@@ -191,37 +262,140 @@ class RallyService:
         return isinstance(value, int) and not isinstance(value, bool)
 
     # Construye la clasificacion con tiempos por tramo.
-    def _build_leaderboard(self, competition_id, stages, participants):
-        leaderboard = []
-        ordered = orderParticipants(participants, competition_id)
-        best_time = ordered[0][1] if ordered else 0
-        for rank, (participant, total_time) in enumerate(ordered, start=1):
-            times_raw = [t[0] for t in get_times(participant, competition_id)]
+    def _build_leaderboard(
+        self, competition_id, stages, participant_records, results=None
+    ):
+        del competition_id
+        results = results or []
+        started_stages = {
+            result["stage_number"]
+            for result in results
+            if result["time_ms"] is not None
+        }
+        by_participant = {}
+        for result in results:
+            by_participant.setdefault(result["participant_name"], {})[
+                result["stage_number"]
+            ] = result
+
+        rows = []
+        for participant in participant_records:
+            if participant["rally_status"] == "disqualified":
+                continue
+            name = participant["participant_name"]
+            stage_map = by_participant.get(name, {})
+            stage_results = []
             stage_times = []
-            for i in range(stages):
-                stage_times.append(times_raw[i] if i < len(times_raw) else None)
-            diff = total_time - best_time if rank > 1 else 0
-            leaderboard.append(
+            for stage in range(1, stages + 1):
+                result = dict(
+                    stage_map.get(stage)
+                    or {
+                        "stage_number": stage,
+                        "status": "pending",
+                        "time_ms": None,
+                        "revision_count": 0,
+                        "previous_time_ms": None,
+                    }
+                )
+                result["stage_started"] = stage in started_stages
+                stage_results.append(result)
+                stage_times.append(result["time_ms"])
+            completed = sum(time is not None for time in stage_times)
+            total = sum(time for time in stage_times if time is not None)
+            statuses = {result["status"] for result in stage_results}
+            if participant["rally_status"] == "retired":
+                group = 1
+                classification_status = "Retirado"
+            elif "pending" in statuses:
+                group = 0
+                classification_status = "Pendiente"
+            elif "dns" in statuses:
+                group = 0
+                classification_status = "No presentado"
+            else:
+                group = 0
+                classification_status = "Clasificado"
+            rows.append(
                 {
-                    "rank": rank,
-                    "participant": participant,
+                    "participant": name,
+                    "stage_results": stage_results,
                     "stage_times": stage_times,
-                    "total": total_time,
-                    "diff": diff,
+                    "total": total,
+                    "diff": None,
+                    "completed_stages": completed,
+                    "classification_status": classification_status,
+                    "rally_status": participant["rally_status"],
+                    "_group": group,
                 }
             )
-        return leaderboard
+
+        rows.sort(
+            key=lambda row: (
+                row["_group"],
+                -row["completed_stages"],
+                row["total"],
+                row["participant"].casefold(),
+            )
+        )
+        best_time_by_progress = {}
+        for row in rows:
+            if row["completed_stages"] <= 0:
+                continue
+            progress_key = (row["_group"], row["completed_stages"])
+            best_time_by_progress[progress_key] = min(
+                row["total"],
+                best_time_by_progress.get(progress_key, row["total"]),
+            )
+        for rank, row in enumerate(rows, start=1):
+            row["rank"] = rank
+            if row["completed_stages"] > 0:
+                progress_key = (row["_group"], row["completed_stages"])
+                row["diff"] = (
+                    row["total"]
+                    - best_time_by_progress[progress_key]
+                )
+            row.pop("_group")
+        return rows
 
     # Determina la etapa con tiempos faltantes mas cercana.
     def get_default_stage(self, competition_id, stages, participants):
         if not participants or stages <= 0:
             return 1
-        counts = get_stage_counts(competition_id)
-        total = len(participants)
+        records = get_participant_records(competition_id)
+        results = get_stage_results(competition_id)
+        status_by_key = {
+            (row["participant_name"], row["stage_number"]): row["status"]
+            for row in results
+        }
         for stage in range(1, stages + 1):
-            if counts.get(stage, 0) < total:
+            relevant = [
+                row
+                for row in records
+                if row["rally_status"] == "active"
+                or (
+                    row["rally_status"] == "retired"
+                    and row["retired_after_stage"] >= stage
+                )
+            ]
+            if any(
+                status_by_key.get((row["participant_name"], stage), "pending")
+                == "pending"
+                for row in relevant
+            ):
                 return stage
         return stages
+
+    def format_stage_result(self, result):
+        status = result["status"]
+        if status == "finished":
+            return self.format_time(result["time_ms"])
+        if status == "stage_dnf":
+            return f"NF {self.format_time(result['time_ms'])}"
+        if status == "dns":
+            return "NP"
+        if status == "dsq":
+            return "DSQ"
+        return "Pendiente" if result.get("stage_started", False) else "-"
 
     @staticmethod
     # Formatea milisegundos a string o placeholder.

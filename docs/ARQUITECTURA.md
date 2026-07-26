@@ -32,7 +32,8 @@ La GUI sigue una separación ligera entre presentación, servicios y persistenci
 | `src/main.py` | Entrada oficial | Importa y ejecuta `gui_tk.main()` |
 | `src/gui_tk.py` | Ventana, formularios, tabla, eventos y temas | `RallyApp`, `main()` |
 | `src/servicios.py` | Casos de uso, mensajes y validación de dominio | `RallyService` |
-| `src/persistencia.py` | Ruta de datos, esquema y consultas SQLite | altas, bajas, lecturas, tiempos y conteos |
+| `src/database_schema.py` | Esquema versionado, backup y migración | `initialize_database`, `DatabaseMigrationError` |
+| `src/persistencia.py` | Ruta de datos y consultas SQLite | competiciones, resultados, estados y retiradas |
 | `src/gestorTiempos.py` | Conversión de unidades y orden de participantes | `tiempo_a_milisegundos`, `milisegundos_a_tiempo`, `orderParticipants` |
 | `src/cli_main.py` | Bucle interactivo de consola heredado | código ejecutado a nivel de módulo |
 | `src/interfaz.py` | Menús y tabla de texto de la CLI | `menuPrincipal`, `cargarCompeticiones`, `menuCompeticion`, `mostrarDatos` |
@@ -42,6 +43,7 @@ La GUI sigue una separación ligera entre presentación, servicios y persistenci
 | `tests/test_release.py` | Regresión del versionado automático | tags, commits, incrementos SemVer, changelog y salidas de Actions |
 | `tests/test_validaciones.py` | Validación funcional con SQLite temporal | tiempos, etapas, participantes y penalizaciones |
 | `tests/test_funcionalidad.py` | Flujos funcionales con SQLite temporal | ciclo de vida, clasificación completa, abandonos, penalizaciones y lógica de tabla |
+| `tests/test_estados.py` | Estados y compatibilidad | transiciones, retiradas, clasificación y migración v1 |
 
 Los imports de `src` son imports planos, no un paquete Python instalable. Por eso las entradas se ejecutan como archivos desde `src` y no mediante `python -m rally_time_tracker`.
 
@@ -64,40 +66,43 @@ Una competición tiene:
 - identificador entero autoincremental;
 - nombre único;
 - número de etapas;
-- una lista de participantes.
+- una lista de participantes y una fecha opcional.
 
-Un tiempo relaciona de forma implícita:
+Cada participante tiene un estado general `active`, `retired` o `disqualified`. Cada pareja participante/tramo tiene siempre un resultado explícito `pending`, `finished`, `stage_dnf`, `dns` o `dsq`, con tiempo únicamente cuando corresponde.
 
-- competición;
-- nombre de participante;
-- número de etapa;
-- duración en milisegundos.
+El resultado conserva el tiempo anterior, un contador de revisiones y la fecha de actualización. Esto permite detectar modificaciones, aunque todavía no constituye un historial completo.
 
-Penalizaciones y abandonos no son entidades independientes. Ambos modifican o crean el valor final del tiempo; no queda registrado el valor original, el motivo ni el autor del cambio.
+## 5. Esquema SQLite v2
 
-## 5. Esquema SQLite
-
-El esquema se crea de manera idempotente en cada apertura de conexión:
+`PRAGMA user_version` identifica el esquema. Las tablas de dominio usan claves primarias, claves foráneas con borrado en cascada, restricciones únicas, `CHECK`, índices y triggers de rango de tramo.
 
 ```sql
-CREATE TABLE IF NOT EXISTS competitions (
+CREATE TABLE competitions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    competition_name varchar2(255) UNIQUE,
-    numberOfStages int
+    competition_name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+    number_of_stages INTEGER NOT NULL,
+    event_date TEXT
 );
 
-CREATE TABLE IF NOT EXISTS participants (
-    competition_id int,
-    participant_name varchar2(255),
-    foreign key(competition_id) references competiciones(id)
+CREATE TABLE participants (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    competition_id INTEGER NOT NULL,
+    participant_name TEXT NOT NULL,
+    rally_status TEXT NOT NULL,
+    retired_after_stage INTEGER,
+    FOREIGN KEY(competition_id) REFERENCES competitions(id) ON DELETE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS times (
-    competition_id int,
-    time int,
-    numberOfStage int,
-    participant varchar2(255),
-    foreign key(competition_id) references competitions(id)
+CREATE TABLE stage_results (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    participant_id INTEGER NOT NULL,
+    stage_number INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    time_ms INTEGER,
+    previous_time_ms INTEGER,
+    revision_count INTEGER NOT NULL,
+    FOREIGN KEY(participant_id) REFERENCES participants(id) ON DELETE CASCADE,
+    UNIQUE(participant_id, stage_number)
 );
 ```
 
@@ -106,36 +111,28 @@ Relación conceptual:
 ```mermaid
 erDiagram
     COMPETITIONS ||--o{ PARTICIPANTS : incluye
-    COMPETITIONS ||--o{ TIMES : registra
-    PARTICIPANTS ||--o{ TIMES : obtiene
+    PARTICIPANTS ||--o{ STAGE_RESULTS : obtiene
     COMPETITIONS {
         integer id PK
         text competition_name UK
-        integer numberOfStages
+        integer number_of_stages
     }
     PARTICIPANTS {
+        integer id PK
         integer competition_id FK
         text participant_name
+        text rally_status
     }
-    TIMES {
-        integer competition_id FK
-        integer time
-        integer numberOfStage
-        text participant
+    STAGE_RESULTS {
+        integer id PK
+        integer participant_id FK
+        integer stage_number
+        text status
+        integer time_ms
     }
 ```
 
-Limitaciones estructurales actuales:
-
-- la clave foránea de `participants` referencia por error `competiciones`, una tabla que no existe;
-- SQLite no activa `PRAGMA foreign_keys = ON`;
-- no hay claves primarias en `participants` ni `times`;
-- no hay restricción única para participante por competición ni para tiempo por participante y etapa;
-- `times.participant` guarda texto en vez de una clave de participante;
-- no hay restricciones `CHECK` para etapas, duraciones o número de etapas;
-- no hay índices explícitos para las consultas frecuentes.
-
-La aplicación mantiene parte de la integridad mediante sus funciones, pero una base editada externamente o una llamada fuera de la GUI puede introducir estados no válidos.
+Antes de migrar una base histórica se crea `datos.v1.backup.db`. Los tiempos válidos pasan a `finished`, se consolidan duplicados conservando el último y se generan filas `pending` para el resto de combinaciones participante/tramo. Las incompatibilidades quedan en `schema_migration_log`.
 
 ## 6. Ubicación e inicialización
 
@@ -147,7 +144,7 @@ La aplicación mantiene parte de la integridad mediante sus funciones, pero una 
 └── no  -> <os.getcwd()>/data/datos.db
 ```
 
-En ambos casos crea el directorio si falta. Cada función abre una conexión, llama a `_initialize_schema`, ejecuta su operación y cierra la conexión.
+En ambos casos crea el directorio si falta. Cada función abre una conexión, llama a `database_schema.initialize_database`, ejecuta su operación y cierra la conexión.
 
 La base `data/datos_template.db` existente en algunos entornos es una plantilla vacía histórica. El código actual no la copia ni la consulta. El `.spec` local también la menciona, pero el workflow vigente empaqueta mediante argumentos de línea de comandos y crea la base al primer uso.
 
@@ -170,16 +167,17 @@ La competición y sus participantes se confirman en una única transacción. Una
 
 ### Registrar tiempo
 
-`RallyService.add_time_str` exige `m:ss.xxx`, segundos entre `00` y `59`, tres milisegundos y duración positiva. Antes de convertir, comprueba que la etapa sea entera y esté en rango, y que el participante pertenezca a la competición. `persistencia.add_time` repite estas comprobaciones y busca una fila con la misma competición, etapa y texto de participante:
-
-- si existe, ejecuta `UPDATE`;
-- si no, ejecuta `INSERT`.
+`RallyService.add_time_str` exige `m:ss.xxx`, segundos entre `00` y `59`, tres milisegundos y duración positiva. `persistencia.add_time` actualiza la fila única participante/tramo a `finished`, conserva el valor anterior e incrementa el contador cuando corrige un resultado ya resuelto.
 
 Las operaciones de abandonos y penalizaciones utilizan el mismo límite de validación. Una llamada directa a persistencia no puede guardar un tiempo decimal, nulo, negativo, fuera de rango o asociado a un participante desconocido.
 
 ### Rellenar abandonos
 
-`fill_times` obtiene el mayor tiempo de la etapa, calcula qué participantes no tienen fila e inserta para ellos `peor_tiempo + 10000` milisegundos. Sin tiempo base devuelve `False`.
+`fill_times` obtiene el mayor tiempo de la etapa y cambia únicamente los resultados `pending` de participantes activos a `stage_dnf` con `peor_tiempo + 10000` milisegundos. El piloto continúa activo en el rally.
+
+### Retirar del rally
+
+`retire_participant` diferencia una retirada después de finalizar el tramo de una retirada durante él. En el segundo caso registra antes `stage_dnf`. Conserva los resultados anteriores, marca `retired_after_stage` y bloquea resultados posteriores hasta que `reactivate_participant` lo devuelve a `active`.
 
 ### Penalizar
 
@@ -187,21 +185,11 @@ Las operaciones de abandonos y penalizaciones utilizan el mismo límite de valid
 
 ### Eliminar competición
 
-`delete_competition` busca el id y borra manualmente, en una misma confirmación, las filas de `competitions`, `participants` y `times`. No depende de cascadas de claves foráneas.
+`delete_competition` borra la competición y SQLite elimina participantes y resultados mediante `ON DELETE CASCADE`.
 
 ## 8. Cálculo de clasificación
 
-`orderParticipants` hace una consulta por participante, suma sus tiempos existentes y ordena el total ascendentemente. `RallyService._build_leaderboard` asigna posición, toma el primer total como referencia y calcula diferencias.
-
-Complejidad aproximada para `P` participantes:
-
-- al menos `P` consultas para ordenar;
-- otras `P` consultas para construir las columnas;
-- coste de ordenación `O(P log P)`.
-
-El patrón es `N+1` y puede hacerse perceptible con muchos participantes.
-
-La consulta `get_times` devuelve solo el valor ordenado por etapa, pero no devuelve el número de etapa. La capa de servicio coloca esos valores por índice. Si falta una etapa intermedia, no puede saber qué hueco debe conservar y desplaza el tiempo. Además, las etapas ausentes no contribuyen al total, por lo que un participante incompleto puede quedar artificialmente delante.
+`RallyService._build_leaderboard` recibe los resultados con su número real de tramo, por lo que conserva huecos. Ordena primero los participantes activos y después los retirados; excluye descalificados. Dentro de cada grupo prioriza más tramos completados y después menor tiempo acumulado. Las diferencias provisionales comparan participantes del mismo grupo y con el mismo número de tramos cronometrados.
 
 ## 9. Presentación
 
@@ -211,7 +199,7 @@ La ordenación de cabeceras es solo de presentación:
 
 - siempre ascendente;
 - los valores ausentes se sitúan al final al ordenar un tramo;
-- `Pos` y `Total` ordenan por el total original;
+- `Pos` ordena por el ranking original y `Total` por el tiempo acumulado;
 - el campo `rank` no cambia al reordenar filas.
 
 La integración Windows intenta activar DPI awareness, establecer un AppUserModelID y cargar iconos. Todas estas llamadas están protegidas por `try/except`, por lo que su fallo no impide abrir la aplicación.

@@ -1,9 +1,11 @@
 import os
+import sqlite3
 import sys
 import tkinter as tk
 from tkinter import font as tkfont
 from tkinter import messagebox, ttk
 
+from database_schema import DatabaseMigrationError
 from servicios import RallyService
 
 
@@ -11,6 +13,7 @@ class RallyApp(tk.Tk):
     # Inicializa la ventana principal y el estado base.
     def __init__(self):
         super().__init__()
+        self.ready = False
         self.service = RallyService()
         self.current_competition = None
         self.dark_mode = True
@@ -26,8 +29,18 @@ class RallyApp(tk.Tk):
         self._build_ui()
         self._set_app_icon()
         self.apply_theme()
-        self.refresh_competitions()
         self.current_leaderboard = []
+        try:
+            self.refresh_competitions()
+        except (DatabaseMigrationError, sqlite3.DatabaseError, OSError) as exc:
+            messagebox.showerror(
+                "Error de base de datos",
+                f"No se pudo abrir o migrar la base de datos.\n\n{exc}",
+                parent=self,
+            )
+            self.destroy()
+            return
+        self.ready = True
 
     # Construye el layout principal.
     def _build_ui(self):
@@ -133,6 +146,63 @@ class RallyApp(tk.Tk):
         self._build_add_time(actions)
         self._build_fill_missing(actions)
         self._build_penalize(actions)
+        self._build_result_status(actions)
+
+    # Crea controles para estados de tramo y abandono del rally.
+    def _build_result_status(self, parent):
+        frame = ttk.LabelFrame(parent, text="Estado del participante y tramo", padding=8)
+        frame.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(8, 0))
+        for column in range(8):
+            frame.columnconfigure(column, weight=1)
+
+        ttk.Label(frame, text="Participante").grid(row=0, column=0, sticky="w")
+        self.status_participant_var = tk.StringVar()
+        self.status_participant_combo = ttk.Combobox(
+            frame, textvariable=self.status_participant_var, state="readonly"
+        )
+        self.status_participant_combo.grid(row=1, column=0, sticky="ew", padx=(0, 6))
+
+        ttk.Label(frame, text="Tramo").grid(row=0, column=1, sticky="w")
+        self.status_stage_var = tk.StringVar()
+        self.status_stage_combo = ttk.Combobox(
+            frame, textvariable=self.status_stage_var, state="readonly", width=7
+        )
+        self.status_stage_combo.grid(row=1, column=1, sticky="ew", padx=(0, 6))
+
+        ttk.Label(frame, text="Estado").grid(row=0, column=2, sticky="w")
+        self.result_status_var = tk.StringVar(value="Pendiente")
+        self.result_status_combo = ttk.Combobox(
+            frame,
+            textvariable=self.result_status_var,
+            state="readonly",
+            values=list(self.service.STATUS_LABELS.values()),
+        )
+        self.result_status_combo.grid(row=1, column=2, sticky="ew", padx=(0, 6))
+
+        ttk.Label(frame, text="Tiempo si finaliza").grid(row=0, column=3, sticky="w")
+        self.status_time_var = tk.StringVar()
+        ttk.Entry(frame, textvariable=self.status_time_var).grid(
+            row=1, column=3, sticky="ew", padx=(0, 6)
+        )
+        ttk.Button(frame, text="Aplicar estado", command=self.apply_status_clicked).grid(
+            row=1, column=4, sticky="ew", padx=(0, 12)
+        )
+
+        ttk.Label(frame, text="Abandono del rally").grid(row=0, column=5, sticky="w")
+        self.retirement_mode_var = tk.StringVar(value="Despues de finalizar")
+        self.retirement_mode_combo = ttk.Combobox(
+            frame,
+            textvariable=self.retirement_mode_var,
+            state="readonly",
+            values=["Despues de finalizar", "Durante el tramo"],
+        )
+        self.retirement_mode_combo.grid(row=1, column=5, sticky="ew", padx=(0, 6))
+        ttk.Button(frame, text="Retirar", command=self.retire_clicked).grid(
+            row=1, column=6, sticky="ew", padx=(0, 6)
+        )
+        ttk.Button(frame, text="Reactivar", command=self.reactivate_clicked).grid(
+            row=1, column=7, sticky="ew"
+        )
 
     # Crea el formulario para agregar tiempos.
     def _build_add_time(self, parent):
@@ -300,6 +370,7 @@ class RallyApp(tk.Tk):
             competition["participants"],
         )
         self.add_stage_combo.set(str(default_stage))
+        self.status_stage_combo.set(str(default_stage))
 
     # Renderiza la tabla de tiempos y ranking.
     def _render_table(self, competition):
@@ -310,7 +381,7 @@ class RallyApp(tk.Tk):
     # Configura columnas y scrolls de la tabla.
     def _build_table(self, stages):
         self._clear_table()
-        columns = ["rank", "participant"] + [f"stage_{i}" for i in range(1, stages + 1)] + ["total", "diff"]
+        columns = ["rank", "participant", "status"] + [f"stage_{i}" for i in range(1, stages + 1)] + ["total", "diff"]
         self.tree = ttk.Treeview(self.table_frame, columns=columns, show="headings", height=16)
         self.tree.grid(row=0, column=0, sticky="nsew")
         self.tree.bind("<MouseWheel>", self._on_mousewheel)
@@ -320,12 +391,14 @@ class RallyApp(tk.Tk):
         self.tree.bind("<Shift-Button-4>", self._on_shift_mousewheel)
         self.tree.bind("<Shift-Button-5>", self._on_shift_mousewheel)
 
-        headings = ["Pos", "Piloto"] + [f"Tramo {i}" for i in range(1, stages + 1)] + ["General", "Dif."]
+        headings = ["Pos", "Piloto", "Estado"] + [f"Tramo {i}" for i in range(1, stages + 1)] + ["General", "Dif."]
         for col, heading in zip(columns, headings):
             self.tree.heading(col, text=heading, command=lambda c=col: self.sort_by_column(c, stages))
-            anchor = "w" if col == "participant" else "center"
+            anchor = "w" if col in ("participant", "status") else "center"
             if col == "participant":
                 width = 180
+            elif col == "status":
+                width = 125
             elif col in ("total", "diff"):
                 width = 120
             else:
@@ -364,11 +437,18 @@ class RallyApp(tk.Tk):
         self.tree.delete(*self.tree.get_children())
         for row in rows:
             rank = row["rank"]
-            diff_text = "-" if rank == 1 else f"+{self.service.format_time(row['diff'])}"
+            if row["diff"] is None:
+                diff_text = "-"
+            else:
+                diff_text = "-" if row["diff"] == 0 else f"+{self.service.format_time(row['diff'])}"
             values = [
                 rank,
                 row["participant"],
-                *[self.service.format_time(ms) for ms in row["stage_times"]],
+                row["classification_status"],
+                *[
+                    self.service.format_stage_result(result)
+                    for result in row["stage_results"]
+                ],
                 self.service.format_time(row["total"]),
                 diff_text,
             ]
@@ -382,15 +462,19 @@ class RallyApp(tk.Tk):
         def missing_last(value):
             return value is None
 
-        if column == "rank" or column == "total":
+        if column == "rank":
+            key_func = lambda r: r["rank"]
+        elif column == "total":
             key_func = lambda r: r["total"]
         elif column == "participant":
             key_func = lambda r: r["participant"].lower()
+        elif column == "status":
+            key_func = lambda r: r["classification_status"]
         elif column.startswith("stage_"):
             stage_index = int(column.split("_")[1]) - 1
             key_func = lambda r: (missing_last(r["stage_times"][stage_index]), r["stage_times"][stage_index] or 0)
         elif column == "diff":
-            key_func = lambda r: r["diff"]
+            key_func = lambda r: (r["diff"] is None, r["diff"] or 0)
         else:
             key_func = lambda r: r["total"]
 
@@ -413,6 +497,7 @@ class RallyApp(tk.Tk):
         for combo in (
             self.add_participant_combo,
             self.penalize_participant_combo,
+            self.status_participant_combo,
         ):
             combo["values"] = participants
             if participants:
@@ -420,7 +505,12 @@ class RallyApp(tk.Tk):
             else:
                 combo.set("")
 
-        for combo in (self.add_stage_combo, self.fill_stage_combo, self.penalize_stage_combo):
+        for combo in (
+            self.add_stage_combo,
+            self.fill_stage_combo,
+            self.penalize_stage_combo,
+            self.status_stage_combo,
+        ):
             combo["values"] = stage_values
             combo.set(stage_values[0] if stage_values else "")
 
@@ -482,6 +572,59 @@ class RallyApp(tk.Tk):
             penalty_seconds,
         )
         self.set_status(msg, ok=ok)
+        if ok:
+            self.on_select_competition()
+
+    # Aplica el estado seleccionado al participante y tramo.
+    def apply_status_clicked(self):
+        if not self.current_competition:
+            self.set_status("Seleccione una competicion.", ok=False)
+            return
+        participant = self.status_participant_var.get()
+        stage = self.status_stage_var.get()
+        if not participant or not stage:
+            self.set_status("Seleccione participante y tramo.", ok=False)
+            return
+        ok, message = self.service.set_result_status(
+            self.current_competition["name"],
+            participant,
+            int(stage),
+            self.result_status_var.get(),
+            self.status_time_var.get(),
+        )
+        self.set_status(message, ok=ok)
+        if ok:
+            self.status_time_var.set("")
+            self.on_select_competition()
+
+    # Marca el abandono definitivo del rally.
+    def retire_clicked(self):
+        if not self.current_competition:
+            self.set_status("Seleccione una competicion.", ok=False)
+            return
+        participant = self.status_participant_var.get()
+        stage = self.status_stage_var.get()
+        if not participant or not stage:
+            self.set_status("Seleccione participante y tramo.", ok=False)
+            return
+        completed = self.retirement_mode_var.get() == "Despues de finalizar"
+        ok, message = self.service.retire_from_rally(
+            self.current_competition["name"], participant, int(stage), completed
+        )
+        self.set_status(message, ok=ok)
+        if ok:
+            self.on_select_competition()
+
+    # Reactiva un participante retirado.
+    def reactivate_clicked(self):
+        if not self.current_competition:
+            self.set_status("Seleccione una competicion.", ok=False)
+            return
+        participant = self.status_participant_var.get()
+        ok, message = self.service.reactivate(
+            self.current_competition["name"], participant
+        )
+        self.set_status(message, ok=ok)
         if ok:
             self.on_select_competition()
 
@@ -706,7 +849,8 @@ class RallyApp(tk.Tk):
 # Arranca la aplicacion.
 def main():
     app = RallyApp()
-    app.mainloop()
+    if app.ready:
+        app.mainloop()
 
 
 if __name__ == "__main__":
