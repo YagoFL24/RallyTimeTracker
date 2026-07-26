@@ -252,13 +252,17 @@ class RallyApp(tk.Tk):
         for name in self.service.list_competitions():
             self.competition_list.insert(tk.END, name)
 
-        if selected_name:
-            self._select_competition_by_name(selected_name)
-        else:
-            self.current_competition = None
-            self.header_label.config(text="Selecciona una competicion")
-            self._clear_table()
-            self._update_action_sources([], 0)
+        if selected_name and self._select_competition_by_name(selected_name):
+            return
+        self._reset_competition_view()
+
+    # Limpia el estado y los controles cuando no hay competicion seleccionada.
+    def _reset_competition_view(self):
+        self.current_competition = None
+        self.current_leaderboard = []
+        self.header_label.config(text="Selecciona una competicion")
+        self._clear_table()
+        self._update_action_sources([], 0)
 
     # Selecciona una competicion por nombre en la lista.
     def _select_competition_by_name(self, name):
@@ -268,7 +272,8 @@ class RallyApp(tk.Tk):
                 self.competition_list.selection_set(idx)
                 self.competition_list.activate(idx)
                 self.on_select_competition()
-                return
+                return True
+        return False
 
     # Carga datos de la competicion seleccionada.
     def on_select_competition(self, _event=None):

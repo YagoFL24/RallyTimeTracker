@@ -13,7 +13,7 @@ Comprobaciones realizadas el 26 de julio de 2026:
 - revisión de tags, historial y archivos versionados;
 - no se abrió ni modificó la base de trabajo real.
 
-Existe una suite de 50 pruebas para versionado y publicación, reglas de entrada, persistencia, clasificación completa, abandonos, penalizaciones y lógica de tabla sin interfaz gráfica. La ventana no se sometió a una prueba gráfica automatizada y el ejecutable local no se reconstruyó durante esta revisión.
+Existe una suite de 51 pruebas para versionado y publicación, reglas de entrada, persistencia, clasificación completa, abandonos, penalizaciones y lógica de tabla sin interfaz gráfica. La ventana no se sometió a una prueba gráfica automatizada y el ejecutable local no se reconstruyó durante esta revisión.
 
 ## 2. Funciones confirmadas
 
@@ -28,7 +28,7 @@ Existe una suite de 50 pruebas para versionado y publicación, reglas de entrada
 | Cálculo de total con filas existentes | Cubierto para clasificaciones completas |
 | Relleno con peor tiempo + 10 s | Cubierto, incluidos repetición y overflow |
 | Penalización positiva y acumulativa | Cubierta por participante y etapa |
-| Borrado de datos asociados | Cubierto mediante borrado manual |
+| Borrado de datos asociados y limpieza de la vista | Cubierto mediante borrado manual y prueba de regresión de la GUI |
 | Persistencia entre sesiones | Cubierta sobre SQLite temporal |
 | Selección de primera etapa incompleta | Cubierta por conteo de filas |
 | SemVer, changelog y Conventional Commits | Cubiertos por pruebas unitarias |
@@ -54,10 +54,6 @@ Impacto: la tabla puede atribuir un tiempo al tramo equivocado.
 ### Integridad débil del esquema
 
 La clave foránea de `participants` apunta a `competiciones`, no se activan claves foráneas y faltan restricciones únicas. Servicio y persistencia impiden crear nuevos participantes duplicados, pero el esquema por sí solo aún los permite si se modifica SQLite externamente.
-
-### Borrado visualmente obsoleto
-
-Después de borrar la competición seleccionada, `refresh_competitions` intenta reseleccionar el nombre ya inexistente y puede conservar la tabla y `current_competition` en memoria. Un segundo refresco limpia la vista.
 
 ### Sin historial ni reversión
 
@@ -109,5 +105,4 @@ Una siguiente versión puede considerarse apta para operación fiable cuando:
 - existe una migración compatible con bases actuales;
 - los casos de uso aún no cubiertos tienen pruebas temporales automatizadas;
 - el release sigue superando sus pruebas de tags y Conventional Commits;
-- el borrado limpia inmediatamente el estado de la GUI;
 - se ha probado el ejecutable contra una copia de una base real.

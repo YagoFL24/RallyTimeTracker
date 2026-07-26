@@ -55,7 +55,7 @@ Los imports de `src` son imports planos, no un paquete Python instalable. Por es
 - `dark_mode` y `theme_colors`: estado visual;
 - variables Tkinter de formularios y widgets.
 
-No existe caché de dominio. Después de una escritura correcta, la GUI consulta otra vez SQLite y reconstruye la tabla.
+No existe caché de dominio. Después de una escritura correcta, la GUI consulta otra vez SQLite y reconstruye la tabla. Si una recarga ya no encuentra la competición seleccionada —por ejemplo, después de borrarla—, `_reset_competition_view` limpia la selección, la clasificación, la cabecera y los controles de acciones.
 
 ## 4. Modelo de dominio
 
