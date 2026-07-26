@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.1.1 - 2026-07-26
+
+- Merge pull request #9 from YagoFL24/fix/validacion-tiempos-etapas-participantes
+- fix: validar tiempos etapas y participantes
 ## v1.1.0 - 2026-07-26
 
 - feat: aÃ±adir documentacion y corregir el versionado automatico
