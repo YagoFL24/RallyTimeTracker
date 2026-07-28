@@ -5,6 +5,12 @@ from gestorTiempos import (
     milisegundos_a_tiempo,
     tiempo_a_milisegundos,
 )
+from intercambio import (
+    ExchangeError,
+    export_data as write_export_file,
+    export_pdf as write_classification_pdf,
+    read_data as read_import_file,
+)
 from persistencia import (
     add_competition,
     add_time,
@@ -16,6 +22,7 @@ from persistencia import (
     get_participants,
     get_participant_records,
     get_stage_results,
+    import_competition_snapshot,
     reactivate_participant,
     retire_participant,
     set_stage_status,
@@ -42,7 +49,7 @@ class RallyService:
         competition = get_competition(competition_name)
         if competition is None:
             return None
-        competition_id, name, stages = competition
+        competition_id, name, stages, event_date = competition
         participant_records = get_participant_records(competition_id)
         participants = [row["participant_name"] for row in participant_records]
         results = get_stage_results(competition_id)
@@ -53,11 +60,68 @@ class RallyService:
             "id": competition_id,
             "name": name,
             "stages": stages,
+            "event_date": event_date,
             "participants": participants,
             "participant_records": participant_records,
             "results": results,
             "leaderboard": leaderboard,
         }
+
+    # Exporta todos los datos de una competición a CSV o Excel.
+    def export_competition(self, competition_name, destination):
+        competition = self.get_competition_info(competition_name)
+        if competition is None:
+            return False, "No existe esa competición."
+        try:
+            write_export_file(competition, destination)
+        except (ExchangeError, OSError) as exc:
+            return False, f"No se pudo exportar: {exc}"
+        return True, "Competición exportada correctamente."
+
+    # Importa un archivo validado como una competición nueva.
+    def import_competition(self, source):
+        try:
+            snapshot = read_import_file(source)
+        except (ExchangeError, OSError) as exc:
+            return False, f"No se pudo importar: {exc}", None
+        snapshot["name"] = self._available_import_name(snapshot["name"])
+        if not import_competition_snapshot(snapshot):
+            return False, "No se pudo guardar la competición importada.", None
+        return (
+            True,
+            f"Competición importada como '{snapshot['name']}'.",
+            snapshot["name"],
+        )
+
+    # Genera una clasificación paginada y lista para imprimir.
+    def export_classification_pdf(self, competition_name, destination):
+        competition = self.get_competition_info(competition_name)
+        if competition is None:
+            return False, "No existe esa competición."
+        try:
+            write_classification_pdf(competition, destination)
+        except (ExchangeError, OSError) as exc:
+            return False, f"No se pudo crear el PDF: {exc}"
+        return True, "Clasificación PDF guardada correctamente."
+
+    def _available_import_name(self, original_name):
+        existing = {name.casefold() for name in self.list_competitions()}
+        if original_name.casefold() not in existing:
+            return original_name
+        suffix = "_importada"
+        base = original_name[: self.MAX_NAME_LENGTH - len(suffix)] + suffix
+        if base.casefold() not in existing:
+            return base
+        number = 2
+        while True:
+            numbered_suffix = f"_importada_{number}"
+            candidate = (
+                original_name[: self.MAX_NAME_LENGTH - len(numbered_suffix)]
+                + numbered_suffix
+            )
+            if candidate.casefold() not in existing:
+                return candidate
+            number += 1
 
     # Valida y crea una competicion con participantes.
     def create_competition(self, name, stages, participants):

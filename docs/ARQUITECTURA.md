@@ -19,6 +19,7 @@ flowchart LR
     CLI --> P[persistencia.py]
     S --> T
     S --> P
+    S --> X[intercambio.py\nCSV / Excel / PDF]
     T --> P
     P --> DB[(SQLite\ndatos.db)]
 ```
@@ -34,6 +35,7 @@ La GUI sigue una separación ligera entre presentación, servicios y persistenci
 | `src/servicios.py` | Casos de uso, mensajes y validación de dominio | `RallyService` |
 | `src/database_schema.py` | Esquema versionado, backup y migración | `initialize_database`, `DatabaseMigrationError` |
 | `src/persistencia.py` | Ruta de datos y consultas SQLite | competiciones, resultados, estados y retiradas |
+| `src/intercambio.py` | Formato de intercambio y documentos | CSV, Excel, validación de importación y PDF |
 | `src/gestorTiempos.py` | Conversión de unidades y orden de participantes | `tiempo_a_milisegundos`, `milisegundos_a_tiempo`, `orderParticipants` |
 | `src/cli_main.py` | Bucle interactivo de consola heredado | código ejecutado a nivel de módulo |
 | `src/interfaz.py` | Menús y tabla de texto de la CLI | `menuPrincipal`, `cargarCompeticiones`, `menuCompeticion`, `mostrarDatos` |
@@ -44,6 +46,7 @@ La GUI sigue una separación ligera entre presentación, servicios y persistenci
 | `tests/test_validaciones.py` | Validación funcional con SQLite temporal | tiempos, etapas, participantes y penalizaciones |
 | `tests/test_funcionalidad.py` | Flujos funcionales con SQLite temporal | ciclo de vida, clasificación completa, abandonos, penalizaciones y lógica de tabla |
 | `tests/test_estados.py` | Estados y compatibilidad | transiciones, retiradas, clasificación y migración v1 |
+| `tests/test_intercambio.py` | Intercambio de datos | ida y vuelta CSV/Excel, colisiones y PDF |
 
 Los imports de `src` son imports planos, no un paquete Python instalable. Por eso las entradas se ejecutan como archivos desde `src` y no mediante `python -m rally_time_tracker`.
 
@@ -186,6 +189,14 @@ Las operaciones de abandonos y penalizaciones utilizan el mismo límite de valid
 ### Eliminar competición
 
 `delete_competition` borra la competición y SQLite elimina participantes y resultados mediante `ON DELETE CASCADE`.
+
+### Exportar e importar
+
+`intercambio.py` convierte una competición en un formato tabular versionado con una fila por participante y tramo. CSV y la hoja `Datos` de Excel comparten las mismas columnas. Excel añade una hoja de clasificación que no interviene en la importación.
+
+La lectura comprueba cabeceras, versión, metadatos comunes, estados, tiempos, ausencia de duplicados y que cada participante tenga exactamente todos los tramos. Solo después `persistencia.import_competition_snapshot` inserta competición, participantes y resultados en una única transacción. `RallyService` resuelve colisiones creando un nombre con sufijo `_importada` sin actualizar la competición original.
+
+La clasificación PDF se genera con ReportLab en A4 horizontal. Los tramos se agrupan en bloques de ocho para evitar tablas ilegibles y las cabeceras se repiten cuando una tabla ocupa varias páginas.
 
 ## 8. Cálculo de clasificación
 

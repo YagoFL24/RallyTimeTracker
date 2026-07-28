@@ -140,7 +140,7 @@ def get_competition(competition_name):
         return None
     connection, cursor = start_connection()
     cursor.execute(
-        "SELECT id, competition_name, number_of_stages FROM competitions "
+        "SELECT id, competition_name, number_of_stages, event_date FROM competitions "
         "WHERE competition_name=?",
         (competition_name.strip(),),
     )
@@ -156,13 +156,66 @@ def get_participants(competition_id):
 def get_participant_records(competition_id):
     connection, cursor = start_connection()
     cursor.execute(
-        "SELECT id, participant_name, rally_status, retired_after_stage "
+        "SELECT id, participant_name, rally_status, retired_after_stage, "
+        "status_before_disqualification "
         "FROM participants WHERE competition_id=? ORDER BY id",
         (competition_id,),
     )
     rows = [dict(row) for row in cursor.fetchall()]
     connection.close()
     return rows
+
+
+def import_competition_snapshot(snapshot):
+    """Inserta una competición ya validada en una única transacción."""
+    connection, cursor = start_connection()
+    try:
+        cursor.execute(
+            "INSERT INTO competitions "
+            "(competition_name, number_of_stages, event_date) VALUES (?, ?, ?)",
+            (snapshot["name"], snapshot["stages"], snapshot.get("event_date")),
+        )
+        competition_id = cursor.lastrowid
+        for participant in snapshot["participants"]:
+            cursor.execute(
+                "INSERT INTO participants "
+                "(competition_id, participant_name, rally_status, "
+                "retired_after_stage, status_before_disqualification) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (
+                    competition_id,
+                    participant["name"],
+                    participant["rally_status"],
+                    participant.get("retired_after_stage"),
+                    participant.get("status_before_disqualification"),
+                ),
+            )
+            participant_id = cursor.lastrowid
+            cursor.executemany(
+                "INSERT INTO stage_results "
+                "(participant_id, stage_number, status, time_ms, "
+                "previous_time_ms, revision_count, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                [
+                    (
+                        participant_id,
+                        result["stage_number"],
+                        result["status"],
+                        result.get("time_ms"),
+                        result.get("previous_time_ms"),
+                        result["revision_count"],
+                        result["updated_at"],
+                    )
+                    for result in participant["results"]
+                ],
+            )
+        connection.commit()
+    except (KeyError, OverflowError, TypeError, sqlite3.IntegrityError):
+        connection.rollback()
+        connection.close()
+        return False
+    connection.close()
+    return True
 
 
 def _record_revision(cursor, participant_id, stage, status, time_ms):

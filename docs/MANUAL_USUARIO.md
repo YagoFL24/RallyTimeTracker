@@ -145,11 +145,35 @@ Puedes pulsar cualquier cabecera para ordenar la vista en sentido ascendente. La
 
 La clasificación coloca primero a todos los pilotos que continúan activos y después a los retirados; los descalificados no aparecen. Dentro de cada grupo se prioriza el mayor número de tramos completados y después el menor tiempo acumulado. Así, un retirado nunca ocupa el primer puesto mientras quede algún piloto activo. Las diferencias provisionales se calculan entre pilotos del mismo grupo y con el mismo número de tramos con tiempo; quien todavía no tiene ningún tiempo muestra `-`. Cada resultado permanece en la columna de su tramo aunque existan huecos anteriores.
 
-## 10. Cambiar de tema
+## 10. Exportar, importar y guardar PDF
+
+Los tres botones están debajo de la lista de competiciones.
+
+### Exportar CSV o Excel
+
+1. Selecciona una competición.
+2. Pulsa **Exportar**.
+3. Elige `Excel (*.xlsx)` o `CSV (*.csv)` y guarda el archivo.
+
+La exportación incluye todos los participantes y tramos, incluso pendientes, no presentados, retirados y descalificados. También conserva tiempos anteriores y el contador de revisiones. El CSV utiliza UTF-8 y separador `;`. El Excel contiene una hoja **Datos**, que permite volver a importarlo, y una hoja **Clasificación** preparada para consulta.
+
+### Importar
+
+Pulsa **Importar** y selecciona un CSV o Excel creado por RallyTimeTracker. El archivo se valida por completo antes de escribir en SQLite y la importación se realiza en una sola transacción.
+
+La importación siempre crea una competición nueva y nunca modifica la existente. Si el nombre ya está ocupado, se añade `_importada`; si también existe, se utilizan `_importada_2`, `_importada_3`, etc.
+
+No elimines ni renombres columnas de la hoja **Datos**. Los tiempos editados manualmente deben conservar el formato `m:ss.xxx` y los estados deben usar los valores ofrecidos por la exportación.
+
+### Clasificación PDF
+
+Selecciona una competición y pulsa **Guardar PDF**. La aplicación solo guarda el documento; después puedes abrirlo e imprimirlo con tu lector habitual. Para mantener la legibilidad, las competiciones con muchos tramos se dividen en bloques de hasta ocho tramos por página.
+
+## 11. Cambiar de tema
 
 El botón situado bajo la lista de competiciones alterna los colores claro y oscuro. La preferencia vive solo durante la sesión: al reiniciar, la aplicación vuelve a iniciar en modo oscuro.
 
-## 11. Eliminar una competición
+## 12. Eliminar una competición
 
 1. Selecciona una competición.
 2. Pulsa **Borrar**.
@@ -159,7 +183,7 @@ Se eliminan permanentemente la competición, sus participantes y sus tiempos. No
 
 Tras borrar, la selección, la tabla y los formularios se limpian inmediatamente.
 
-## 12. Base de datos y copias de seguridad
+## 13. Base de datos y copias de seguridad
 
 Ubicaciones:
 
@@ -178,7 +202,7 @@ Para copiar o restaurar:
 
 No sustituyas la base mientras la aplicación realiza una operación.
 
-## 13. CLI heredada
+## 14. CLI heredada
 
 La interfaz de consola usa la misma base y las mismas funciones de persistencia:
 
@@ -188,7 +212,7 @@ python src/cli_main.py
 
 Permite listar, crear y borrar competiciones, ver datos, añadir tiempos, rellenar abandonos y penalizar. Comparte con la GUI las validaciones de competiciones, etapas, participantes, tiempos y penalizaciones. Está orientada a Windows porque limpia la pantalla con `cls`; una opción de menú no numérica todavía puede cerrar el programa con un error. Para operación normal se recomienda la interfaz gráfica.
 
-## 14. Mensajes frecuentes
+## 15. Mensajes frecuentes
 
 | Mensaje | Acción recomendada |
 | --- | --- |

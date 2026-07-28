@@ -3,7 +3,7 @@ import sqlite3
 import sys
 import tkinter as tk
 from tkinter import font as tkfont
-from tkinter import messagebox, ttk
+from tkinter import filedialog, messagebox, ttk
 
 from database_schema import DatabaseMigrationError
 from servicios import RallyService
@@ -111,6 +111,16 @@ class RallyApp(tk.Tk):
         )
         ttk.Button(buttons, text="Refrescar", command=self.refresh_competitions).grid(
             row=0, column=2, sticky="ew"
+        )
+
+        ttk.Button(buttons, text="Exportar", command=self.export_clicked).grid(
+            row=1, column=0, sticky="ew", padx=(0, 6), pady=(6, 0)
+        )
+        ttk.Button(buttons, text="Importar", command=self.import_clicked).grid(
+            row=1, column=1, sticky="ew", padx=(0, 6), pady=(6, 0)
+        )
+        ttk.Button(buttons, text="Guardar PDF", command=self.export_pdf_clicked).grid(
+            row=1, column=2, sticky="ew", pady=(6, 0)
         )
 
         self.theme_button = ttk.Button(panel, text="Modo oscuro", command=self.toggle_theme)
@@ -325,6 +335,73 @@ class RallyApp(tk.Tk):
         if selected_name and self._select_competition_by_name(selected_name):
             return
         self._reset_competition_view()
+
+    @staticmethod
+    def _safe_filename(name):
+        forbidden = '<>:"/\\|?*'
+        safe = "".join("_" if character in forbidden else character for character in name)
+        return safe.rstrip(". ") or "competicion"
+
+    # Exporta la competición seleccionada a CSV o Excel.
+    def export_clicked(self):
+        if not self.current_competition:
+            self.set_status("Seleccione una competicion.", ok=False)
+            return
+        name = self.current_competition["name"]
+        destination = filedialog.asksaveasfilename(
+            parent=self,
+            title="Exportar competición",
+            initialfile=f"{self._safe_filename(name)}.xlsx",
+            defaultextension=".xlsx",
+            filetypes=[("Libro de Excel", "*.xlsx"), ("Archivo CSV", "*.csv")],
+        )
+        if not destination:
+            return
+        ok, message = self.service.export_competition(name, destination)
+        self.set_status(message, ok=ok)
+        if not ok:
+            messagebox.showerror("Error de exportación", message, parent=self)
+
+    # Importa una competición desde un archivo CSV o Excel.
+    def import_clicked(self):
+        source = filedialog.askopenfilename(
+            parent=self,
+            title="Importar competición",
+            filetypes=[
+                ("CSV o Excel", "*.csv *.xlsx"),
+                ("Libro de Excel", "*.xlsx"),
+                ("Archivo CSV", "*.csv"),
+            ],
+        )
+        if not source:
+            return
+        ok, message, imported_name = self.service.import_competition(source)
+        self.set_status(message, ok=ok)
+        if not ok:
+            messagebox.showerror("Error de importación", message, parent=self)
+            return
+        self.refresh_competitions()
+        self._select_competition_by_name(imported_name)
+
+    # Guarda la clasificación actual como PDF imprimible.
+    def export_pdf_clicked(self):
+        if not self.current_competition:
+            self.set_status("Seleccione una competicion.", ok=False)
+            return
+        name = self.current_competition["name"]
+        destination = filedialog.asksaveasfilename(
+            parent=self,
+            title="Guardar clasificación PDF",
+            initialfile=f"clasificacion_{self._safe_filename(name)}.pdf",
+            defaultextension=".pdf",
+            filetypes=[("Documento PDF", "*.pdf")],
+        )
+        if not destination:
+            return
+        ok, message = self.service.export_classification_pdf(name, destination)
+        self.set_status(message, ok=ok)
+        if not ok:
+            messagebox.showerror("Error al crear PDF", message, parent=self)
 
     # Limpia el estado y los controles cuando no hay competicion seleccionada.
     def _reset_competition_view(self):
