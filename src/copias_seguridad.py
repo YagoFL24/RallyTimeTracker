@@ -28,7 +28,7 @@ class BackupError(RuntimeError):
 
 
 def get_backup_directory():
-    directory = Path(get_database_path()).parent / "backups"
+    directory = (Path(get_database_path()).parent / "backups").resolve()
     directory.mkdir(parents=True, exist_ok=True)
     return directory
 
