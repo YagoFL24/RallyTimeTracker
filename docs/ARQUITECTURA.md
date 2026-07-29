@@ -36,6 +36,7 @@ La GUI sigue una separación ligera entre presentación, servicios y persistenci
 | `src/database_schema.py` | Esquema versionado, backup y migración | `initialize_database`, `DatabaseMigrationError` |
 | `src/persistencia.py` | Ruta de datos y consultas SQLite | competiciones, resultados, estados y retiradas |
 | `src/intercambio.py` | Formato de intercambio y documentos | CSV, Excel, validación de importación y PDF |
+| `src/copias_seguridad.py` | Protección de la base | backup SQLite, rotación, validación y restauración atómica |
 | `src/gestorTiempos.py` | Conversión de unidades y orden de participantes | `tiempo_a_milisegundos`, `milisegundos_a_tiempo`, `orderParticipants` |
 | `src/cli_main.py` | Bucle interactivo de consola heredado | código ejecutado a nivel de módulo |
 | `src/interfaz.py` | Menús y tabla de texto de la CLI | `menuPrincipal`, `cargarCompeticiones`, `menuCompeticion`, `mostrarDatos` |
@@ -47,6 +48,7 @@ La GUI sigue una separación ligera entre presentación, servicios y persistenci
 | `tests/test_funcionalidad.py` | Flujos funcionales con SQLite temporal | ciclo de vida, clasificación completa, abandonos, penalizaciones y lógica de tabla |
 | `tests/test_estados.py` | Estados y compatibilidad | transiciones, retiradas, clasificación y migración v1 |
 | `tests/test_intercambio.py` | Intercambio de datos | ida y vuelta CSV/Excel, colisiones y PDF |
+| `tests/test_copias_seguridad.py` | Backups | creación, rotación, validación, importación y restauración |
 
 Los imports de `src` son imports planos, no un paquete Python instalable. Por eso las entradas se ejecutan como archivos desde `src` y no mediante `python -m rally_time_tracker`.
 
@@ -198,6 +200,14 @@ Las operaciones de abandonos y penalizaciones utilizan el mismo límite de valid
 La lectura comprueba cabeceras, versión, metadatos comunes, estados, tiempos, ausencia de duplicados y que cada participante tenga exactamente todos los tramos. Solo después `persistencia.import_competition_snapshot` inserta competición, participantes y resultados en una única transacción. `RallyService` resuelve colisiones creando un nombre con sufijo `_importada` sin actualizar la competición original.
 
 La clasificación PDF se genera con ReportLab en A4 horizontal. Los tramos se agrupan en bloques de ocho para evitar tablas ilegibles y las cabeceras se repiten cuando una tabla ocupa varias páginas.
+
+### Copias y restauración
+
+`copias_seguridad.create_backup` usa `sqlite3.Connection.backup` sobre una conexión inicializada. Las copias se guardan junto a la base, incluyen motivo y marca temporal en el nombre y se validan inmediatamente. La rotación afecta únicamente a las copias de arranque y conserva las 10 más recientes.
+
+`validate_backup` abre el archivo en modo de solo lectura y comprueba `quick_check`, `PRAGMA user_version`, tablas de dominio y claves foráneas. `restore_backup` valida primero el origen, crea una copia `pre_restore`, copia a un archivo temporal, vuelve a validarlo y usa `os.replace` para sustituir atómicamente `datos.db`.
+
+La copia de arranque se solicita desde `RallyApp` después de cargar la base. `RallyService.import_competition` crea `pre_import` después de validar el archivo de intercambio y antes de la transacción de importación.
 
 ### Panel del tramo
 

@@ -217,13 +217,42 @@ Ubicaciones:
 
 La base y sus tablas se crean automáticamente al abrir la aplicación por primera vez. Una base anterior se migra al esquema de estados y crea antes `datos.v1.backup.db`; los tiempos existentes pasan a **Finalizado** y los huecos a **Pendiente**.
 
-Para copiar o restaurar:
+### Copias automáticas
 
-1. cierra todas las ventanas de Rally Time Tracker;
-2. copia `datos.db` a una ubicación segura o sustituye el archivo por una copia anterior;
-3. vuelve a abrir la aplicación y comprueba una competición.
+La aplicación crea una copia consistente de SQLite:
 
-No sustituyas la base mientras la aplicación realiza una operación.
+- en cada arranque, después de abrir y validar la base;
+- antes de importar una competición válida;
+- antes de restaurar otra copia.
+
+Se conservan las 10 copias de arranque más recientes. Las copias manuales y preventivas no se eliminan automáticamente. Sus carpetas son:
+
+| Forma de ejecución | Carpeta de copias |
+| --- | --- |
+| `python src/main.py` | `<directorio de ejecución>/data/backups` |
+| `.exe` de PyInstaller | `%LOCALAPPDATA%\RallyTimeTracker\backups` |
+
+### Crear una copia manual
+
+1. Pulsa **Copias de seguridad** en el panel izquierdo.
+2. Selecciona **Crear copia ahora**.
+3. La nueva entrada aparece con el motivo **Manual**.
+
+El listado muestra fecha, motivo, tamaño y nombre de archivo. Las copias usan la API de backup de SQLite, por lo que no es necesario cerrar la aplicación.
+
+### Restaurar
+
+Puedes seleccionar una copia gestionada y pulsar **Restaurar seleccionada**, hacer doble clic sobre ella o usar **Restaurar otro archivo** para elegir un `.db` externo.
+
+Antes de sustituir los datos, la aplicación:
+
+1. valida la integridad SQLite, la versión del esquema, las tablas y las claves foráneas;
+2. solicita confirmación;
+3. crea una copia **Antes de restaurar** del estado actual;
+4. copia la base seleccionada a un archivo temporal validado;
+5. reemplaza `datos.db` de forma atómica y refresca la interfaz.
+
+Si el archivo está dañado o no es compatible, la base actual no se modifica. No reemplaces manualmente `datos.db` mientras la aplicación está abierta.
 
 ## 15. CLI heredada
 

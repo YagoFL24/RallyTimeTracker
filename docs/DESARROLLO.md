@@ -44,7 +44,7 @@ No uses una base real para pruebas destructivas. Crea un directorio temporal, ca
 
 ## 4. Pruebas y controles
 
-El repositorio contiene 77 pruebas unitarias y funcionales. Las operaciones de datos se ejecutan sobre bases SQLite temporales, nunca sobre `data/datos.db`.
+El repositorio contiene 82 pruebas unitarias y funcionales. Las operaciones de datos se ejecutan sobre bases SQLite temporales, nunca sobre `data/datos.db`.
 
 Cobertura automatizada actual:
 
@@ -55,6 +55,7 @@ Cobertura automatizada actual:
 - exportación e importación real de CSV/Excel y generación PDF;
 - resumen operativo del tramo, pendientes activos, revisiones y carga rápida en formularios;
 - presentación y ordenación de descalificados conservando resultados previos;
+- creación, rotación, validación y restauración atómica de backups SQLite;
 - abandonos, acumulación de penalizaciones y protección frente a overflow;
 - ordenación de tabla y carga de combos sin levantar una ventana real;
 - SemVer, lectura de commits, changelog, notas y salidas de GitHub Actions.

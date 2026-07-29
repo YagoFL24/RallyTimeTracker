@@ -1,5 +1,12 @@
 from decimal import Decimal, InvalidOperation
 
+from copias_seguridad import (
+    BackupError,
+    create_backup,
+    get_backup_directory,
+    list_backups,
+    restore_backup,
+)
 from gestorTiempos import (
     MAX_SQLITE_INTEGER,
     milisegundos_a_tiempo,
@@ -85,6 +92,10 @@ class RallyService:
         except (ExchangeError, OSError) as exc:
             return False, f"No se pudo importar: {exc}", None
         snapshot["name"] = self._available_import_name(snapshot["name"])
+        try:
+            create_backup("pre_import")
+        except BackupError as exc:
+            return False, f"No se pudo crear la copia previa: {exc}", None
         if not import_competition_snapshot(snapshot):
             return False, "No se pudo guardar la competición importada.", None
         return (
@@ -103,6 +114,33 @@ class RallyService:
         except (ExchangeError, OSError) as exc:
             return False, f"No se pudo crear el PDF: {exc}"
         return True, "Clasificación PDF guardada correctamente."
+
+    # Crea una copia consistente de la base SQLite actual.
+    def create_database_backup(self, reason="manual"):
+        try:
+            backup = create_backup(reason)
+        except BackupError as exc:
+            return False, str(exc), None
+        return True, f"Copia creada: {backup['name']}.", backup
+
+    def list_database_backups(self):
+        try:
+            return list_backups(), str(get_backup_directory()), None
+        except (BackupError, OSError) as exc:
+            return [], "", str(exc)
+
+    # Restaura una copia tras guardar automáticamente el estado actual.
+    def restore_database_backup(self, source):
+        try:
+            safety_backup = restore_backup(source)
+        except BackupError as exc:
+            return False, str(exc), None
+        return (
+            True,
+            "Base restaurada correctamente. "
+            f"Copia preventiva: {safety_backup['name']}.",
+            safety_backup,
+        )
 
     # Resume el estado operativo de un tramo para el panel de carrera.
     def get_stage_dashboard(self, competition_name, stage=None):

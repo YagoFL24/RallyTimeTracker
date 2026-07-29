@@ -23,6 +23,10 @@ def _get_db_path():
     return os.path.join(data_dir, "datos.db")
 
 
+def get_database_path():
+    return _get_db_path()
+
+
 def start_connection():
     database_path = _get_db_path()
     connection = sqlite3.connect(database_path, timeout=10)

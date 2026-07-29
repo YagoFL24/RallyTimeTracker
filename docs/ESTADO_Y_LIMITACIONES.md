@@ -4,7 +4,7 @@
 
 Comprobaciones realizadas durante el desarrollo de la v1.2.0:
 
-- suite de 77 pruebas unitarias y funcionales;
+- suite de 82 pruebas unitarias y funcionales;
 - bases SQLite temporales para todos los flujos de escritura;
 - migración v1 a v2 con backup y conservación de tiempos;
 - estados explícitos por participante y tramo;
@@ -29,6 +29,7 @@ La ventana no se ha sometido a automatización gráfica real y el ejecutable tod
 | Intercambio | Exportación e importación CSV/Excel versionada, validada y transaccional |
 | PDF | Clasificación A4 horizontal paginada por bloques de tramos |
 | Panel de tramo | Seguimiento automático, contadores, pendientes y resultados modificados |
+| Copias de seguridad | Arranque, preimportación, prerrestauración, copia manual y restauración validada |
 | Modificación de resultado | Conserva valor anterior, revisión y fecha de actualización |
 | Migración | Convierte tiempos a finalizados y huecos a pendientes |
 | Integridad SQLite | Claves foráneas, unicidad, checks, índices y triggers activos |
@@ -70,6 +71,6 @@ Algunos errores de permisos, bloqueo o corrupción SQLite todavía pueden cerrar
 ## 6. Criterio para completar la v1.2.0
 
 - validar cada rama funcional antes de fusionarla en `feat/v1.2.0`;
-- completar panel, importación/exportación, PDF, backups y atajos;
+- completar los atajos de teclado;
 - probar la GUI y el ejecutable sobre una copia de una base real;
 - fusionar en `main` una sola vez para publicar `v1.2.0`.
