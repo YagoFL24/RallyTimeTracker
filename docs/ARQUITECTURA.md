@@ -49,6 +49,7 @@ La GUI sigue una separación ligera entre presentación, servicios y persistenci
 | `tests/test_estados.py` | Estados y compatibilidad | transiciones, retiradas, clasificación y migración v1 |
 | `tests/test_intercambio.py` | Intercambio de datos | ida y vuelta CSV/Excel, colisiones y PDF |
 | `tests/test_copias_seguridad.py` | Backups | creación, rotación, validación, importación y restauración |
+| `tests/test_atajos_teclado.py` | Introducción rápida | recorrido de pendientes, cambio circular de controles y guardado por teclado |
 
 Los imports de `src` son imports planos, no un paquete Python instalable. Por eso las entradas se ejecutan como archivos desde `src` y no mediante `python -m rally_time_tracker`.
 
@@ -214,6 +215,12 @@ La copia de arranque se solicita desde `RallyApp` después de cargar la base. `R
 `RallyService.get_stage_dashboard` construye una vista operativa sin modificar datos. Considera pendiente solo una fila `pending` cuyo participante continúa `active`, proyecta como `dsq` cualquier tramo sin tiempo de un participante descalificado, agrupa contadores por estado y marca como modificada una fila con `revision_count > 0`.
 
 `RallyApp` presenta el resumen en un `Toplevel`. Por defecto consulta de nuevo el tramo actual después de cada acción; el usuario puede desactivar el seguimiento para fijar otro tramo. La selección de una fila copia piloto y tramo a los formularios existentes, por lo que el panel no duplica operaciones de escritura ni reglas de validación.
+
+### Introducción rápida por teclado
+
+`RallyApp._bind_keyboard_shortcuts` registra los atajos únicamente en la ventana principal. Todos reutilizan los controles y acciones existentes: `Enter` y `Ctrl+Enter` llaman a `add_time_clicked`, las flechas cambian los mismos `Combobox` y `Ctrl+P` abre el panel operativo.
+
+Después de una escritura correcta, `RallyService.get_next_pending_participant` recorre el orden de alta desde el piloto guardado y devuelve el siguiente participante activo cuyo resultado continúa pendiente. Si no queda ninguno en ese tramo, la GUI consulta `get_default_stage` e intenta el primer pendiente del nuevo tramo. Esta selección no modifica la base de datos.
 
 ## 8. Cálculo de clasificación
 

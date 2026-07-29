@@ -19,6 +19,7 @@ Aplicación de escritorio para registrar y clasificar tiempos de una competició
 - Guardar la clasificación como un PDF paginado y listo para imprimir.
 - Supervisar el tramo actual con contadores, pendientes y resultados modificados.
 - Crear copias automáticas y manuales de SQLite y restaurarlas desde la aplicación.
+- Introducir resultados con atajos de teclado y avanzar automáticamente al siguiente piloto pendiente.
 - Ordenar visualmente la tabla por posición, piloto, tramo, total o diferencia.
 - Alternar entre tema claro y oscuro.
 - Usar una interfaz gráfica principal y una CLI heredada.
@@ -57,6 +58,7 @@ python src/cli_main.py
 8. Usa **Exportar**, **Importar** o **Guardar PDF** desde el panel de competiciones.
 9. Pulsa **Panel del tramo** para supervisar y cargar rápidamente los resultados pendientes.
 10. Usa **Copias de seguridad** para crear o restaurar una copia de la base.
+11. Pulsa **Atajos** o `F1` para consultar las teclas de introducción rápida.
 
 Consulta la [guía de usuario](docs/MANUAL_USUARIO.md) para conocer todos los flujos y las reglas de cálculo.
 
@@ -105,6 +107,7 @@ RallyTimeTracker/
 │   ├── test_intercambio.py       # Ida y vuelta CSV/Excel y PDF
 │   ├── test_panel_tramo.py       # Panel operativo, alertas y carga rápida
 │   ├── test_copias_seguridad.py  # Creación, rotación y restauración
+│   ├── test_atajos_teclado.py     # Atajos y avance entre resultados pendientes
 │   ├── test_validaciones.py     # Reglas y límites de entrada
 │   └── test_release.py          # SemVer, changelog y publicación
 ├── CHANGELOG.md

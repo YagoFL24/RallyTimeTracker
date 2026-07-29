@@ -71,7 +71,7 @@ Ejemplos habituales:
 
 Si ya existe un registro para ese participante y etapa, el nuevo valor sustituye al anterior. No hay historial ni botón para deshacer la corrección.
 
-Después de guardar, la tabla se vuelve a cargar, el campo de tiempo se vacía y la etapa elegida se conserva.
+Después de guardar, la tabla se vuelve a cargar y el campo de tiempo se vacía. La aplicación selecciona el siguiente piloto activo pendiente del mismo tramo. Si ya no queda ninguno, avanza al primer pendiente del tramo actual siguiente. Los retirados y descalificados no forman parte de este recorrido.
 
 La etapa sugerida al seleccionar una competición es la primera que tiene menos registros que participantes. Si todas están completas, se propone la última.
 
@@ -254,7 +254,23 @@ Antes de sustituir los datos, la aplicación:
 
 Si el archivo está dañado o no es compatible, la base actual no se modifica. No reemplaces manualmente `datos.db` mientras la aplicación está abierta.
 
-## 15. CLI heredada
+## 15. Atajos de teclado
+
+Pulsa **Atajos**, junto a **Panel del tramo**, o `F1` para abrir la referencia dentro de la aplicación.
+
+| Tecla | Acción |
+| --- | --- |
+| `F1` | Mostrar la ayuda de atajos |
+| `F2` | Llevar el cursor al campo de tiempo y seleccionar su contenido |
+| `Enter` | Guardar cuando el cursor está en el campo de tiempo |
+| `Ctrl+Enter` | Guardar el resultado desde cualquier control de la ventana principal |
+| `Ctrl+↑` / `Ctrl+↓` | Seleccionar el piloto anterior o siguiente |
+| `Ctrl+←` / `Ctrl+→` | Seleccionar el tramo anterior o siguiente |
+| `Ctrl+P` | Abrir o traer al frente el panel del tramo |
+
+La selección de pilotos y tramos es circular: al superar el último vuelve al primero, y viceversa. Después de cambiar con `Ctrl` y las flechas, el foco vuelve al campo de tiempo para continuar escribiendo sin usar el ratón.
+
+## 16. CLI heredada
 
 La interfaz de consola usa la misma base y las mismas funciones de persistencia:
 
@@ -264,7 +280,7 @@ python src/cli_main.py
 
 Permite listar, crear y borrar competiciones, ver datos, añadir tiempos, rellenar abandonos y penalizar. Comparte con la GUI las validaciones de competiciones, etapas, participantes, tiempos y penalizaciones. Está orientada a Windows porque limpia la pantalla con `cls`; una opción de menú no numérica todavía puede cerrar el programa con un error. Para operación normal se recomienda la interfaz gráfica.
 
-## 16. Mensajes frecuentes
+## 17. Mensajes frecuentes
 
 | Mensaje | Acción recomendada |
 | --- | --- |
