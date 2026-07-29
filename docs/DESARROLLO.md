@@ -2,16 +2,17 @@
 
 ## 1. Entorno
 
-El proyecto no tiene dependencias de ejecución fuera de la biblioteca estándar de Python. La publicación oficial configura Python 3.12 en Windows.
+El proyecto usa `openpyxl` para Excel y `reportlab` para PDF. La publicación oficial configura Python 3.12 en Windows y obtiene las versiones fijadas en `requirements.txt`.
 
 Comprueba el entorno:
 
 ```bash
 python --version
+python -m pip install -r requirements.txt
 python -c "import tkinter, sqlite3; print('Tk', tkinter.TkVersion, 'SQLite', sqlite3.sqlite_version)"
 ```
 
-No hay `requirements.txt` ni `pyproject.toml`. PyInstaller solo es necesario para construir el ejecutable.
+PyInstaller solo es necesario para construir el ejecutable.
 
 ## 2. Ejecutar desde código
 
@@ -43,7 +44,7 @@ No uses una base real para pruebas destructivas. Crea un directorio temporal, ca
 
 ## 4. Pruebas y controles
 
-El repositorio contiene 64 pruebas unitarias y funcionales. Las operaciones de datos se ejecutan sobre bases SQLite temporales, nunca sobre `data/datos.db`.
+El repositorio contiene 77 pruebas unitarias y funcionales. Las operaciones de datos se ejecutan sobre bases SQLite temporales, nunca sobre `data/datos.db`.
 
 Cobertura automatizada actual:
 
@@ -51,6 +52,9 @@ Cobertura automatizada actual:
 - validación de competiciones, etapas, participantes y penalizaciones;
 - ciclo completo de alta, consulta, persistencia y borrado;
 - clasificación completa e incompleta, estados explícitos, retiradas y selección de etapa pendiente;
+- exportación e importación real de CSV/Excel y generación PDF;
+- resumen operativo del tramo, pendientes activos, revisiones y carga rápida en formularios;
+- presentación y ordenación de descalificados conservando resultados previos;
 - abandonos, acumulación de penalizaciones y protección frente a overflow;
 - ordenación de tabla y carga de combos sin levantar una ventana real;
 - SemVer, lectura de commits, changelog, notas y salidas de GitHub Actions.
@@ -91,7 +95,8 @@ Antes de automatizar casos de integración, conviene permitir inyectar la ruta d
 Instala PyInstaller:
 
 ```bash
-python -m pip install --upgrade pip pyinstaller
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt pyinstaller
 ```
 
 Ejecuta el mismo comando que usa GitHub Actions:
@@ -117,6 +122,7 @@ El archivo `RallyTimeTracker.spec` que puede existir localmente está ignorado p
 ```text
 checkout completo
   -> Python 3.12
+  -> instalar dependencias de requirements.txt
   -> release.py
   -> instalar PyInstaller (si hay release)
   -> compilar EXE

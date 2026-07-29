@@ -19,6 +19,7 @@ flowchart LR
     CLI --> P[persistencia.py]
     S --> T
     S --> P
+    S --> X[intercambio.py\nCSV / Excel / PDF]
     T --> P
     P --> DB[(SQLite\ndatos.db)]
 ```
@@ -34,6 +35,7 @@ La GUI sigue una separación ligera entre presentación, servicios y persistenci
 | `src/servicios.py` | Casos de uso, mensajes y validación de dominio | `RallyService` |
 | `src/database_schema.py` | Esquema versionado, backup y migración | `initialize_database`, `DatabaseMigrationError` |
 | `src/persistencia.py` | Ruta de datos y consultas SQLite | competiciones, resultados, estados y retiradas |
+| `src/intercambio.py` | Formato de intercambio y documentos | CSV, Excel, validación de importación y PDF |
 | `src/gestorTiempos.py` | Conversión de unidades y orden de participantes | `tiempo_a_milisegundos`, `milisegundos_a_tiempo`, `orderParticipants` |
 | `src/cli_main.py` | Bucle interactivo de consola heredado | código ejecutado a nivel de módulo |
 | `src/interfaz.py` | Menús y tabla de texto de la CLI | `menuPrincipal`, `cargarCompeticiones`, `menuCompeticion`, `mostrarDatos` |
@@ -44,6 +46,7 @@ La GUI sigue una separación ligera entre presentación, servicios y persistenci
 | `tests/test_validaciones.py` | Validación funcional con SQLite temporal | tiempos, etapas, participantes y penalizaciones |
 | `tests/test_funcionalidad.py` | Flujos funcionales con SQLite temporal | ciclo de vida, clasificación completa, abandonos, penalizaciones y lógica de tabla |
 | `tests/test_estados.py` | Estados y compatibilidad | transiciones, retiradas, clasificación y migración v1 |
+| `tests/test_intercambio.py` | Intercambio de datos | ida y vuelta CSV/Excel, colisiones y PDF |
 
 Los imports de `src` son imports planos, no un paquete Python instalable. Por eso las entradas se ejecutan como archivos desde `src` y no mediante `python -m rally_time_tracker`.
 
@@ -55,6 +58,7 @@ Los imports de `src` son imports planos, no un paquete Python instalable. Por es
 - `current_competition`: diccionario de la competición cargada;
 - `current_leaderboard`: filas del ranking original;
 - `dark_mode` y `theme_colors`: estado visual;
+- `dashboard_window` y `dashboard_tree`: panel operativo opcional del tramo;
 - variables Tkinter de formularios y widgets.
 
 No existe caché de dominio. Después de una escritura correcta, la GUI consulta otra vez SQLite y reconstruye la tabla. Si una recarga ya no encuentra la competición seleccionada —por ejemplo, después de borrarla—, `_reset_competition_view` limpia la selección, la clasificación, la cabecera y los controles de acciones.
@@ -187,9 +191,25 @@ Las operaciones de abandonos y penalizaciones utilizan el mismo límite de valid
 
 `delete_competition` borra la competición y SQLite elimina participantes y resultados mediante `ON DELETE CASCADE`.
 
+### Exportar e importar
+
+`intercambio.py` convierte una competición en un formato tabular versionado con una fila por participante y tramo. CSV y la hoja `Datos` de Excel comparten las mismas columnas. Excel añade una hoja de clasificación que no interviene en la importación.
+
+La lectura comprueba cabeceras, versión, metadatos comunes, estados, tiempos, ausencia de duplicados y que cada participante tenga exactamente todos los tramos. Solo después `persistencia.import_competition_snapshot` inserta competición, participantes y resultados en una única transacción. `RallyService` resuelve colisiones creando un nombre con sufijo `_importada` sin actualizar la competición original.
+
+La clasificación PDF se genera con ReportLab en A4 horizontal. Los tramos se agrupan en bloques de ocho para evitar tablas ilegibles y las cabeceras se repiten cuando una tabla ocupa varias páginas.
+
+### Panel del tramo
+
+`RallyService.get_stage_dashboard` construye una vista operativa sin modificar datos. Considera pendiente solo una fila `pending` cuyo participante continúa `active`, proyecta como `dsq` cualquier tramo sin tiempo de un participante descalificado, agrupa contadores por estado y marca como modificada una fila con `revision_count > 0`.
+
+`RallyApp` presenta el resumen en un `Toplevel`. Por defecto consulta de nuevo el tramo actual después de cada acción; el usuario puede desactivar el seguimiento para fijar otro tramo. La selección de una fila copia piloto y tramo a los formularios existentes, por lo que el panel no duplica operaciones de escritura ni reglas de validación.
+
 ## 8. Cálculo de clasificación
 
-`RallyService._build_leaderboard` recibe los resultados con su número real de tramo, por lo que conserva huecos. Ordena primero los participantes activos y después los retirados; excluye descalificados. Dentro de cada grupo prioriza más tramos completados y después menor tiempo acumulado. Las diferencias provisionales comparan participantes del mismo grupo y con el mismo número de tramos cronometrados.
+`RallyService._build_leaderboard` recibe los resultados con su número real de tramo, por lo que conserva huecos. Ordena participantes activos, retirados y descalificados, en ese orden. Dentro de cada grupo prioriza más tramos con tiempo —`finished` o `stage_dnf`— y después menor tiempo acumulado.
+
+Los descalificados permanecen al final con rango textual `DSQ` y sin diferencia. Sus resultados con tiempo se conservan y los huecos se proyectan como `dsq` únicamente para la presentación. Para bases creadas antes de esta regla, un tiempo desplazado a `previous_time_ms` por la descalificación se recupera en la vista. Las diferencias provisionales solo comparan participantes no descalificados del mismo grupo y con el mismo progreso.
 
 ## 9. Presentación
 

@@ -112,7 +112,7 @@ En **Estado del participante y tramo** puedes seleccionar participante, tramo y 
 - **Finalizado**: exige un tiempo `m:ss.xxx`;
 - **No finalizado**: recibe el peor tiempo del tramo más 10 segundos y continúa en el rally;
 - **No presentado**: no tiene tiempo en ese tramo, pero puede participar en los siguientes;
-- **Descalificado**: queda fuera de la clasificación, aunque sus datos se conservan.
+- **Descalificado**: queda fuera de las posiciones, pero permanece visible al final y sus datos se conservan.
 
 **Retirar** es una operación distinta. Permite indicar que el piloto abandona definitivamente después de finalizar el tramo o durante él. En el segundo caso se registra primero el tramo como no finalizado. Sus tiempos anteriores se conservan y aparece después de todos los pilotos que continúan activos. **Reactivar** permite devolverlo al rally y editar después sus estados.
 
@@ -143,13 +143,60 @@ Los tiempos se almacenan en milisegundos y se muestran como `m:ss.xxx`. Un tramo
 
 Puedes pulsar cualquier cabecera para ordenar la vista en sentido ascendente. La ordenación no alterna entre ascendente y descendente. Ordenar la vista tampoco recalcula el número de posición: **Pos** sigue representando el ranking general original.
 
-La clasificación coloca primero a todos los pilotos que continúan activos y después a los retirados; los descalificados no aparecen. Dentro de cada grupo se prioriza el mayor número de tramos completados y después el menor tiempo acumulado. Así, un retirado nunca ocupa el primer puesto mientras quede algún piloto activo. Las diferencias provisionales se calculan entre pilotos del mismo grupo y con el mismo número de tramos con tiempo; quien todavía no tiene ningún tiempo muestra `-`. Cada resultado permanece en la columna de su tramo aunque existan huecos anteriores.
+La clasificación coloca primero a todos los pilotos que continúan activos, después a los retirados y finalmente a los descalificados. Dentro de cada grupo se prioriza el mayor número de tramos con tiempo —incluidos los `NF`— y después el menor tiempo acumulado. Así, un retirado nunca ocupa el primer puesto mientras quede algún piloto activo.
 
-## 10. Cambiar de tema
+Los descalificados muestran `DSQ` en **Pos** y `-` en **Dif.**. Conservan en su columna todos los tiempos que habían registrado; los demás tramos muestran `DSQ`. Entre ellos se aplica también la ordenación por cantidad de tramos con tiempo y total acumulado.
+
+Las diferencias provisionales se calculan entre pilotos no descalificados del mismo grupo y con el mismo número de tramos con tiempo; quien todavía no tiene ningún tiempo muestra `-`. Cada resultado permanece en la columna de su tramo aunque existan huecos anteriores.
+
+## 10. Panel de control del tramo
+
+Selecciona una competición y pulsa **Panel del tramo**, situado junto al encabezado de la clasificación. Se abre una ventana que puedes mantener visible mientras introduces resultados.
+
+El panel sigue automáticamente el tramo actual, entendido como el primero que todavía tiene resultados pendientes para pilotos activos. Cuando completas ese tramo, avanza al siguiente después de refrescar los datos. Para revisar otro tramo, desmarca **Seguir tramo actual** y selecciónalo en el desplegable; **Ir al actual** recupera el seguimiento automático.
+
+Los contadores muestran total de pilotos, pendientes activos, finalizados, NF, NP, DSQ y resultados modificados. La tabla sitúa primero los pendientes y utiliza estos avisos visuales:
+
+- pendiente: requiere introducir un resultado;
+- resultado modificado: tiene al menos una revisión y muestra su valor anterior;
+- resuelto: dispone de un estado definitivo para el tramo;
+- inactivo: está retirado o descalificado.
+
+Un participante descalificado nunca aparece como pendiente en el panel. Si no había registrado tiempo en el tramo seleccionado, su resultado se muestra como **Descalificado** y aumenta el contador DSQ.
+
+Un resultado se considera anómalo únicamente cuando ha sido modificado después de su registro inicial. Haz doble clic sobre un piloto —o usa **Cargar participante seleccionado**— para copiar piloto y tramo a los formularios principales. Un pendiente prepara el estado **Finalizado** y deja el cursor en el campo de tiempo.
+
+El panel se actualiza después de guardar tiempos, aplicar estados, rellenar abandonos, penalizar, retirar o reactivar participantes.
+
+## 11. Exportar, importar y guardar PDF
+
+Los tres botones están debajo de la lista de competiciones.
+
+### Exportar CSV o Excel
+
+1. Selecciona una competición.
+2. Pulsa **Exportar**.
+3. Elige `Excel (*.xlsx)` o `CSV (*.csv)` y guarda el archivo.
+
+La exportación incluye todos los participantes y tramos, incluso pendientes, no presentados, retirados y descalificados. También conserva tiempos anteriores y el contador de revisiones. El CSV utiliza UTF-8 y separador `;`. El Excel contiene una hoja **Datos**, que permite volver a importarlo, y una hoja **Clasificación** preparada para consulta.
+
+### Importar
+
+Pulsa **Importar** y selecciona un CSV o Excel creado por RallyTimeTracker. El archivo se valida por completo antes de escribir en SQLite y la importación se realiza en una sola transacción.
+
+La importación siempre crea una competición nueva y nunca modifica la existente. Si el nombre ya está ocupado, se añade `_importada`; si también existe, se utilizan `_importada_2`, `_importada_3`, etc.
+
+No elimines ni renombres columnas de la hoja **Datos**. Los tiempos editados manualmente deben conservar el formato `m:ss.xxx` y los estados deben usar los valores ofrecidos por la exportación.
+
+### Clasificación PDF
+
+Selecciona una competición y pulsa **Guardar PDF**. La aplicación solo guarda el documento; después puedes abrirlo e imprimirlo con tu lector habitual. Para mantener la legibilidad, las competiciones con muchos tramos se dividen en bloques de hasta ocho tramos por página.
+
+## 12. Cambiar de tema
 
 El botón situado bajo la lista de competiciones alterna los colores claro y oscuro. La preferencia vive solo durante la sesión: al reiniciar, la aplicación vuelve a iniciar en modo oscuro.
 
-## 11. Eliminar una competición
+## 13. Eliminar una competición
 
 1. Selecciona una competición.
 2. Pulsa **Borrar**.
@@ -159,7 +206,7 @@ Se eliminan permanentemente la competición, sus participantes y sus tiempos. No
 
 Tras borrar, la selección, la tabla y los formularios se limpian inmediatamente.
 
-## 12. Base de datos y copias de seguridad
+## 14. Base de datos y copias de seguridad
 
 Ubicaciones:
 
@@ -178,7 +225,7 @@ Para copiar o restaurar:
 
 No sustituyas la base mientras la aplicación realiza una operación.
 
-## 13. CLI heredada
+## 15. CLI heredada
 
 La interfaz de consola usa la misma base y las mismas funciones de persistencia:
 
@@ -188,7 +235,7 @@ python src/cli_main.py
 
 Permite listar, crear y borrar competiciones, ver datos, añadir tiempos, rellenar abandonos y penalizar. Comparte con la GUI las validaciones de competiciones, etapas, participantes, tiempos y penalizaciones. Está orientada a Windows porque limpia la pantalla con `cls`; una opción de menú no numérica todavía puede cerrar el programa con un error. Para operación normal se recomienda la interfaz gráfica.
 
-## 14. Mensajes frecuentes
+## 16. Mensajes frecuentes
 
 | Mensaje | Acción recomendada |
 | --- | --- |
