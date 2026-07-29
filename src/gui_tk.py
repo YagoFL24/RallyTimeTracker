@@ -1,9 +1,11 @@
 import os
+import sqlite3
 import sys
 import tkinter as tk
 from tkinter import font as tkfont
-from tkinter import messagebox, ttk
+from tkinter import filedialog, messagebox, ttk
 
+from database_schema import DatabaseMigrationError
 from servicios import RallyService
 
 
@@ -11,12 +13,20 @@ class RallyApp(tk.Tk):
     # Inicializa la ventana principal y el estado base.
     def __init__(self):
         super().__init__()
+        self.ready = False
         self.service = RallyService()
         self.current_competition = None
         self.dark_mode = True
         self.style = ttk.Style(self)
         self.theme_colors = {}
         self._theme_text_widgets = []
+        self.dashboard_window = None
+        self.dashboard_tree = None
+        self.dashboard_competition_name = None
+        self._dashboard_rows_by_participant = {}
+        self.backup_window = None
+        self.backup_tree = None
+        self._backup_paths = {}
 
         self.title("Rally Time Tracker")
         self.geometry("1100x650")
@@ -24,10 +34,33 @@ class RallyApp(tk.Tk):
         self._configure_text_rendering()
 
         self._build_ui()
+        self._bind_keyboard_shortcuts()
         self._set_app_icon()
         self.apply_theme()
-        self.refresh_competitions()
         self.current_leaderboard = []
+        try:
+            self.refresh_competitions()
+        except (DatabaseMigrationError, sqlite3.DatabaseError, OSError) as exc:
+            messagebox.showerror(
+                "Error de base de datos",
+                f"No se pudo abrir o migrar la base de datos.\n\n{exc}",
+                parent=self,
+            )
+            self.destroy()
+            return
+        backup_ok, backup_message, _backup = self.service.create_database_backup(
+            "startup"
+        )
+        if backup_ok:
+            self.set_status("Copia automática de arranque creada.")
+        else:
+            self.set_status(backup_message, ok=False)
+            messagebox.showwarning(
+                "Copia de seguridad",
+                f"La aplicación continuará, pero no pudo crear la copia de arranque.\n\n{backup_message}",
+                parent=self,
+            )
+        self.ready = True
 
     # Construye el layout principal.
     def _build_ui(self):
@@ -100,6 +133,21 @@ class RallyApp(tk.Tk):
             row=0, column=2, sticky="ew"
         )
 
+        ttk.Button(buttons, text="Exportar", command=self.export_clicked).grid(
+            row=1, column=0, sticky="ew", padx=(0, 6), pady=(6, 0)
+        )
+        ttk.Button(buttons, text="Importar", command=self.import_clicked).grid(
+            row=1, column=1, sticky="ew", padx=(0, 6), pady=(6, 0)
+        )
+        ttk.Button(buttons, text="Guardar PDF", command=self.export_pdf_clicked).grid(
+            row=1, column=2, sticky="ew", pady=(6, 0)
+        )
+        ttk.Button(
+            buttons,
+            text="Copias de seguridad",
+            command=self.open_backup_manager,
+        ).grid(row=2, column=0, columnspan=3, sticky="ew", pady=(6, 0))
+
         self.theme_button = ttk.Button(panel, text="Modo oscuro", command=self.toggle_theme)
         self.theme_button.grid(row=3, column=0, sticky="ew", pady=(8, 0))
 
@@ -110,8 +158,27 @@ class RallyApp(tk.Tk):
         panel.columnconfigure(0, weight=1)
         panel.rowconfigure(1, weight=1)
 
-        self.header_label = ttk.Label(panel, text="Selecciona una competicion", font=("Segoe UI", 12, "bold"))
+        header = ttk.Frame(panel)
+        header.grid(row=0, column=0, sticky="ew")
+        header.columnconfigure(0, weight=1)
+        self.header_label = ttk.Label(
+            header,
+            text="Selecciona una competicion",
+            font=("Segoe UI", 12, "bold"),
+        )
         self.header_label.grid(row=0, column=0, sticky="w")
+        self.dashboard_button = ttk.Button(
+            header,
+            text="Panel del tramo",
+            command=self.open_stage_dashboard,
+            state="disabled",
+        )
+        self.dashboard_button.grid(row=0, column=1, sticky="e", padx=(0, 6))
+        ttk.Button(
+            header,
+            text="Atajos",
+            command=self.show_shortcuts_help,
+        ).grid(row=0, column=2, sticky="e")
 
         self.table_frame = ttk.Frame(panel)
         self.table_frame.grid(row=1, column=0, sticky="nsew", pady=8)
@@ -133,6 +200,63 @@ class RallyApp(tk.Tk):
         self._build_add_time(actions)
         self._build_fill_missing(actions)
         self._build_penalize(actions)
+        self._build_result_status(actions)
+
+    # Crea controles para estados de tramo y abandono del rally.
+    def _build_result_status(self, parent):
+        frame = ttk.LabelFrame(parent, text="Estado del participante y tramo", padding=8)
+        frame.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(8, 0))
+        for column in range(8):
+            frame.columnconfigure(column, weight=1)
+
+        ttk.Label(frame, text="Participante").grid(row=0, column=0, sticky="w")
+        self.status_participant_var = tk.StringVar()
+        self.status_participant_combo = ttk.Combobox(
+            frame, textvariable=self.status_participant_var, state="readonly"
+        )
+        self.status_participant_combo.grid(row=1, column=0, sticky="ew", padx=(0, 6))
+
+        ttk.Label(frame, text="Tramo").grid(row=0, column=1, sticky="w")
+        self.status_stage_var = tk.StringVar()
+        self.status_stage_combo = ttk.Combobox(
+            frame, textvariable=self.status_stage_var, state="readonly", width=7
+        )
+        self.status_stage_combo.grid(row=1, column=1, sticky="ew", padx=(0, 6))
+
+        ttk.Label(frame, text="Estado").grid(row=0, column=2, sticky="w")
+        self.result_status_var = tk.StringVar(value="Pendiente")
+        self.result_status_combo = ttk.Combobox(
+            frame,
+            textvariable=self.result_status_var,
+            state="readonly",
+            values=list(self.service.STATUS_LABELS.values()),
+        )
+        self.result_status_combo.grid(row=1, column=2, sticky="ew", padx=(0, 6))
+
+        ttk.Label(frame, text="Tiempo si finaliza").grid(row=0, column=3, sticky="w")
+        self.status_time_var = tk.StringVar()
+        ttk.Entry(frame, textvariable=self.status_time_var).grid(
+            row=1, column=3, sticky="ew", padx=(0, 6)
+        )
+        ttk.Button(frame, text="Aplicar estado", command=self.apply_status_clicked).grid(
+            row=1, column=4, sticky="ew", padx=(0, 12)
+        )
+
+        ttk.Label(frame, text="Abandono del rally").grid(row=0, column=5, sticky="w")
+        self.retirement_mode_var = tk.StringVar(value="Despues de finalizar")
+        self.retirement_mode_combo = ttk.Combobox(
+            frame,
+            textvariable=self.retirement_mode_var,
+            state="readonly",
+            values=["Despues de finalizar", "Durante el tramo"],
+        )
+        self.retirement_mode_combo.grid(row=1, column=5, sticky="ew", padx=(0, 6))
+        ttk.Button(frame, text="Retirar", command=self.retire_clicked).grid(
+            row=1, column=6, sticky="ew", padx=(0, 6)
+        )
+        ttk.Button(frame, text="Reactivar", command=self.reactivate_clicked).grid(
+            row=1, column=7, sticky="ew"
+        )
 
     # Crea el formulario para agregar tiempos.
     def _build_add_time(self, parent):
@@ -154,11 +278,16 @@ class RallyApp(tk.Tk):
 
         ttk.Label(frame, text="Tiempo (m:ss.xxx)").grid(row=2, column=0, sticky="w")
         self.add_time_var = tk.StringVar()
-        ttk.Entry(frame, textvariable=self.add_time_var).grid(row=2, column=1, sticky="ew", pady=2)
+        self.add_time_entry = ttk.Entry(frame, textvariable=self.add_time_var)
+        self.add_time_entry.grid(row=2, column=1, sticky="ew", pady=2)
 
         ttk.Button(frame, text="Guardar", command=self.add_time_clicked).grid(
             row=3, column=0, columnspan=2, sticky="ew", pady=(6, 0)
         )
+        ttk.Label(
+            frame,
+            text="F2 tiempo · Ctrl+↕ piloto · Ctrl+↔ tramo · Ctrl+Enter guardar",
+        ).grid(row=4, column=0, columnspan=2, sticky="w", pady=(5, 0))
 
     # Crea el formulario para rellenar abandonos.
     def _build_fill_missing(self, parent):
@@ -212,6 +341,89 @@ class RallyApp(tk.Tk):
         prefix = "OK" if ok else "Aviso"
         self.status_var.set(f"{prefix}: {message}")
 
+    # Registra los atajos de introducción rápida de resultados.
+    def _bind_keyboard_shortcuts(self):
+        self.bind("<F1>", self.show_shortcuts_help)
+        self.bind("<F2>", self._focus_time_shortcut)
+        self.bind("<Control-Return>", self._save_time_shortcut)
+        self.bind("<Control-Up>", self._previous_participant_shortcut)
+        self.bind("<Control-Down>", self._next_participant_shortcut)
+        self.bind("<Control-Left>", self._previous_stage_shortcut)
+        self.bind("<Control-Right>", self._next_stage_shortcut)
+        self.bind("<Control-p>", self._open_dashboard_shortcut)
+        self.add_time_entry.bind("<Return>", self._save_time_shortcut)
+
+    # Muestra una referencia accesible de todos los atajos disponibles.
+    def show_shortcuts_help(self, _event=None):
+        messagebox.showinfo(
+            "Atajos de teclado",
+            "F1\tMostrar esta ayuda\n"
+            "F2\tIr al campo de tiempo\n"
+            "Enter\tGuardar desde el campo de tiempo\n"
+            "Ctrl+Enter\tGuardar el resultado\n"
+            "Ctrl+↑ / Ctrl+↓\tPiloto anterior / siguiente\n"
+            "Ctrl+← / Ctrl+→\tTramo anterior / siguiente\n"
+            "Ctrl+P\tAbrir el panel del tramo",
+            parent=self,
+        )
+        return "break"
+
+    def _focus_time_shortcut(self, _event=None):
+        if not self.current_competition:
+            self.set_status("Seleccione una competicion.", ok=False)
+            return "break"
+        self.add_time_entry.focus_set()
+        self.add_time_entry.selection_range(0, tk.END)
+        return "break"
+
+    def _save_time_shortcut(self, _event=None):
+        self.add_time_clicked()
+        return "break"
+
+    @staticmethod
+    def _cycle_combobox(combo, step):
+        values = list(combo["values"])
+        if not values:
+            return None
+        current = combo.get()
+        try:
+            index = values.index(current)
+        except ValueError:
+            index = -1 if step > 0 else 0
+        selected = values[(index + step) % len(values)]
+        combo.set(selected)
+        return selected
+
+    def _cycle_result_participant(self, step):
+        if not self.current_competition:
+            self.set_status("Seleccione una competicion.", ok=False)
+            return "break"
+        self._cycle_combobox(self.add_participant_combo, step)
+        return self._focus_time_shortcut()
+
+    def _cycle_result_stage(self, step):
+        if not self.current_competition:
+            self.set_status("Seleccione una competicion.", ok=False)
+            return "break"
+        self._cycle_combobox(self.add_stage_combo, step)
+        return self._focus_time_shortcut()
+
+    def _previous_participant_shortcut(self, _event=None):
+        return self._cycle_result_participant(-1)
+
+    def _next_participant_shortcut(self, _event=None):
+        return self._cycle_result_participant(1)
+
+    def _previous_stage_shortcut(self, _event=None):
+        return self._cycle_result_stage(-1)
+
+    def _next_stage_shortcut(self, _event=None):
+        return self._cycle_result_stage(1)
+
+    def _open_dashboard_shortcut(self, _event=None):
+        self.open_stage_dashboard()
+        return "break"
+
     # Carga el icono de la aplicacion.
     def _set_app_icon(self):
         self._set_app_user_model_id()
@@ -256,11 +468,255 @@ class RallyApp(tk.Tk):
             return
         self._reset_competition_view()
 
+    @staticmethod
+    def _safe_filename(name):
+        forbidden = '<>:"/\\|?*'
+        safe = "".join("_" if character in forbidden else character for character in name)
+        return safe.rstrip(". ") or "competicion"
+
+    # Exporta la competición seleccionada a CSV o Excel.
+    def export_clicked(self):
+        if not self.current_competition:
+            self.set_status("Seleccione una competicion.", ok=False)
+            return
+        name = self.current_competition["name"]
+        destination = filedialog.asksaveasfilename(
+            parent=self,
+            title="Exportar competición",
+            initialfile=f"{self._safe_filename(name)}.xlsx",
+            defaultextension=".xlsx",
+            filetypes=[("Libro de Excel", "*.xlsx"), ("Archivo CSV", "*.csv")],
+        )
+        if not destination:
+            return
+        ok, message = self.service.export_competition(name, destination)
+        self.set_status(message, ok=ok)
+        if not ok:
+            messagebox.showerror("Error de exportación", message, parent=self)
+
+    # Importa una competición desde un archivo CSV o Excel.
+    def import_clicked(self):
+        source = filedialog.askopenfilename(
+            parent=self,
+            title="Importar competición",
+            filetypes=[
+                ("CSV o Excel", "*.csv *.xlsx"),
+                ("Libro de Excel", "*.xlsx"),
+                ("Archivo CSV", "*.csv"),
+            ],
+        )
+        if not source:
+            return
+        ok, message, imported_name = self.service.import_competition(source)
+        self.set_status(message, ok=ok)
+        if not ok:
+            messagebox.showerror("Error de importación", message, parent=self)
+            return
+        self.refresh_competitions()
+        self._select_competition_by_name(imported_name)
+
+    # Guarda la clasificación actual como PDF imprimible.
+    def export_pdf_clicked(self):
+        if not self.current_competition:
+            self.set_status("Seleccione una competicion.", ok=False)
+            return
+        name = self.current_competition["name"]
+        destination = filedialog.asksaveasfilename(
+            parent=self,
+            title="Guardar clasificación PDF",
+            initialfile=f"clasificacion_{self._safe_filename(name)}.pdf",
+            defaultextension=".pdf",
+            filetypes=[("Documento PDF", "*.pdf")],
+        )
+        if not destination:
+            return
+        ok, message = self.service.export_classification_pdf(name, destination)
+        self.set_status(message, ok=ok)
+        if not ok:
+            messagebox.showerror("Error al crear PDF", message, parent=self)
+
+    # Abre el gestor de copias locales y restauración.
+    def open_backup_manager(self):
+        if self.backup_window is not None and self.backup_window.winfo_exists():
+            self.backup_window.deiconify()
+            self.backup_window.lift()
+            self._refresh_backup_manager()
+            return
+
+        window = tk.Toplevel(self)
+        window.title("Copias de seguridad")
+        window.geometry("900x480")
+        window.minsize(720, 380)
+        window.transient(self)
+        window.columnconfigure(0, weight=1)
+        window.rowconfigure(1, weight=1)
+        window.protocol("WM_DELETE_WINDOW", self._close_backup_manager)
+        window.bind("<Destroy>", self._on_backup_manager_destroy)
+        self.backup_window = window
+
+        self.backup_directory_var = tk.StringVar()
+        ttk.Label(
+            window,
+            textvariable=self.backup_directory_var,
+            padding=(10, 10, 10, 6),
+        ).grid(row=0, column=0, sticky="ew")
+
+        table_frame = ttk.Frame(window, padding=(10, 0, 10, 8))
+        table_frame.grid(row=1, column=0, sticky="nsew")
+        table_frame.columnconfigure(0, weight=1)
+        table_frame.rowconfigure(0, weight=1)
+        columns = ("created", "reason", "size", "name")
+        self.backup_tree = ttk.Treeview(
+            table_frame, columns=columns, show="headings", selectmode="browse"
+        )
+        self.backup_tree.grid(row=0, column=0, sticky="nsew")
+        for column, heading, width in (
+            ("created", "Fecha", 160),
+            ("reason", "Motivo", 170),
+            ("size", "Tamaño", 100),
+            ("name", "Archivo", 390),
+        ):
+            self.backup_tree.heading(column, text=heading)
+            self.backup_tree.column(
+                column,
+                width=width,
+                anchor="w" if column in {"reason", "name"} else "center",
+            )
+        scrollbar = ttk.Scrollbar(
+            table_frame, orient="vertical", command=self.backup_tree.yview
+        )
+        scrollbar.grid(row=0, column=1, sticky="ns")
+        self.backup_tree.configure(yscrollcommand=scrollbar.set)
+        self.backup_tree.bind(
+            "<Double-1>", lambda _event: self._restore_selected_backup()
+        )
+
+        buttons = ttk.Frame(window, padding=(10, 0, 10, 10))
+        buttons.grid(row=2, column=0, sticky="ew")
+        for column in range(4):
+            buttons.columnconfigure(column, weight=1)
+        ttk.Button(
+            buttons, text="Crear copia ahora", command=self._create_manual_backup
+        ).grid(row=0, column=0, sticky="ew", padx=(0, 6))
+        ttk.Button(
+            buttons,
+            text="Restaurar seleccionada",
+            command=self._restore_selected_backup,
+        ).grid(row=0, column=1, sticky="ew", padx=(0, 6))
+        ttk.Button(
+            buttons,
+            text="Restaurar otro archivo",
+            command=self._restore_external_backup,
+        ).grid(row=0, column=2, sticky="ew", padx=(0, 6))
+        ttk.Button(
+            buttons, text="Cerrar", command=self._close_backup_manager
+        ).grid(row=0, column=3, sticky="ew")
+        self._refresh_backup_manager()
+
+    def _on_backup_manager_destroy(self, event):
+        if event.widget is self.backup_window:
+            self.backup_window = None
+            self.backup_tree = None
+            self._backup_paths = {}
+
+    def _close_backup_manager(self):
+        window = self.backup_window
+        self.backup_window = None
+        self.backup_tree = None
+        self._backup_paths = {}
+        if window is not None and window.winfo_exists():
+            window.destroy()
+
+    def _refresh_backup_manager(self):
+        if (
+            self.backup_window is None
+            or not self.backup_window.winfo_exists()
+            or self.backup_tree is None
+        ):
+            return
+        backups, directory, error = self.service.list_database_backups()
+        self.backup_directory_var.set(f"Ubicación: {directory}" if directory else "")
+        self.backup_tree.delete(*self.backup_tree.get_children())
+        self._backup_paths = {}
+        if error:
+            self.set_status(error, ok=False)
+            messagebox.showerror("Copias de seguridad", error, parent=self.backup_window)
+            return
+        for index, backup in enumerate(backups):
+            item_id = f"backup_{index}"
+            self._backup_paths[item_id] = backup["path"]
+            self.backup_tree.insert(
+                "",
+                tk.END,
+                iid=item_id,
+                values=(
+                    backup["created_at"].strftime("%d/%m/%Y %H:%M:%S"),
+                    backup["reason_label"],
+                    f"{backup['size'] / 1024:.1f} KB",
+                    backup["name"],
+                ),
+            )
+
+    def _create_manual_backup(self):
+        ok, message, _backup = self.service.create_database_backup("manual")
+        self.set_status(message, ok=ok)
+        if not ok:
+            messagebox.showerror(
+                "Copia de seguridad", message, parent=self.backup_window
+            )
+            return
+        self._refresh_backup_manager()
+
+    def _restore_selected_backup(self):
+        if self.backup_tree is None:
+            return
+        selection = self.backup_tree.selection()
+        if not selection:
+            self.set_status("Seleccione una copia de seguridad.", ok=False)
+            return
+        self._confirm_restore(self._backup_paths[selection[0]])
+
+    def _restore_external_backup(self):
+        source = filedialog.askopenfilename(
+            parent=self.backup_window or self,
+            title="Seleccionar base para restaurar",
+            filetypes=[("Base de datos SQLite", "*.db"), ("Todos los archivos", "*.*")],
+        )
+        if source:
+            self._confirm_restore(source)
+
+    def _confirm_restore(self, source):
+        if not messagebox.askyesno(
+            "Confirmar restauración",
+            "La base de datos actual será sustituida por la copia seleccionada.\n\n"
+            "Antes se creará automáticamente una copia preventiva. ¿Continuar?",
+            parent=self.backup_window or self,
+        ):
+            return
+        ok, message, _safety_backup = self.service.restore_database_backup(source)
+        self.set_status(message, ok=ok)
+        if not ok:
+            messagebox.showerror(
+                "Error de restauración", message, parent=self.backup_window or self
+            )
+            return
+        if self.dashboard_window is not None:
+            self._close_stage_dashboard()
+        self.refresh_competitions()
+        self._refresh_backup_manager()
+        messagebox.showinfo(
+            "Restauración completada", message, parent=self.backup_window or self
+        )
+
     # Limpia el estado y los controles cuando no hay competicion seleccionada.
     def _reset_competition_view(self):
         self.current_competition = None
         self.current_leaderboard = []
         self.header_label.config(text="Selecciona una competicion")
+        if hasattr(self, "dashboard_button"):
+            self.dashboard_button.config(state="disabled")
+        if getattr(self, "dashboard_window", None) is not None:
+            self._close_stage_dashboard()
         self._clear_table()
         self._update_action_sources([], 0)
 
@@ -290,6 +746,7 @@ class RallyApp(tk.Tk):
             self.refresh_competitions()
             return
         self.current_competition = competition
+        self.dashboard_button.config(state="normal")
         header = f"{competition['name']}  |  Etapas: {competition['stages']}"
         self.header_label.config(text=header)
         self._render_table(competition)
@@ -300,6 +757,285 @@ class RallyApp(tk.Tk):
             competition["participants"],
         )
         self.add_stage_combo.set(str(default_stage))
+        self.status_stage_combo.set(str(default_stage))
+        self._refresh_stage_dashboard(
+            reset_stage=self.dashboard_competition_name != competition["name"]
+        )
+
+    # Abre el panel operativo del tramo actual.
+    def open_stage_dashboard(self):
+        if not self.current_competition:
+            self.set_status("Seleccione una competicion.", ok=False)
+            return
+        if self.dashboard_window is not None and self.dashboard_window.winfo_exists():
+            self.dashboard_window.deiconify()
+            self.dashboard_window.lift()
+            self._refresh_stage_dashboard()
+            return
+
+        window = tk.Toplevel(self)
+        window.title("Panel de control del tramo")
+        window.geometry("1050x600")
+        window.minsize(850, 450)
+        window.transient(self)
+        window.columnconfigure(0, weight=1)
+        window.rowconfigure(2, weight=1)
+        window.protocol("WM_DELETE_WINDOW", self._close_stage_dashboard)
+        window.bind("<Destroy>", self._on_dashboard_destroy)
+        self.dashboard_window = window
+
+        controls = ttk.Frame(window, padding=10)
+        controls.grid(row=0, column=0, sticky="ew")
+        controls.columnconfigure(5, weight=1)
+        ttk.Label(controls, text="Tramo").grid(row=0, column=0, padx=(0, 6))
+        self.dashboard_stage_var = tk.StringVar()
+        self.dashboard_stage_combo = ttk.Combobox(
+            controls,
+            textvariable=self.dashboard_stage_var,
+            state="readonly",
+            width=8,
+        )
+        self.dashboard_stage_combo.grid(row=0, column=1, padx=(0, 10))
+        self.dashboard_stage_combo.bind(
+            "<<ComboboxSelected>>", self._dashboard_stage_changed
+        )
+        self.dashboard_follow_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(
+            controls,
+            text="Seguir tramo actual",
+            variable=self.dashboard_follow_var,
+            command=self._refresh_stage_dashboard,
+        ).grid(row=0, column=2, padx=(0, 10))
+        ttk.Button(
+            controls, text="Ir al actual", command=self._go_to_current_stage
+        ).grid(row=0, column=3, padx=(0, 10))
+        ttk.Label(
+            controls,
+            text="Doble clic para cargar el piloto en los formularios",
+        ).grid(row=0, column=5, sticky="e")
+
+        summary = ttk.Frame(window, padding=(10, 0, 10, 10))
+        summary.grid(row=1, column=0, sticky="ew")
+        summary_labels = (
+            ("total", "Total"),
+            ("pending", "Pendientes"),
+            ("finished", "Finalizados"),
+            ("stage_dnf", "NF"),
+            ("dns", "NP"),
+            ("dsq", "DSQ"),
+            ("modified", "Modificados"),
+        )
+        self.dashboard_summary_vars = {}
+        for column, (key, label) in enumerate(summary_labels):
+            summary.columnconfigure(column, weight=1)
+            frame = ttk.LabelFrame(summary, text=label, padding=6)
+            frame.grid(
+                row=0,
+                column=column,
+                sticky="ew",
+                padx=(0, 6 if column < len(summary_labels) - 1 else 0),
+            )
+            value = tk.StringVar(value="0")
+            self.dashboard_summary_vars[key] = value
+            ttk.Label(frame, textvariable=value, anchor="center").pack(fill="x")
+
+        table_frame = ttk.Frame(window, padding=(10, 0, 10, 10))
+        table_frame.grid(row=2, column=0, sticky="nsew")
+        table_frame.columnconfigure(0, weight=1)
+        table_frame.rowconfigure(0, weight=1)
+        columns = (
+            "participant",
+            "rally_status",
+            "result_status",
+            "time",
+            "previous",
+            "revisions",
+            "alert",
+        )
+        self.dashboard_tree = ttk.Treeview(
+            table_frame, columns=columns, show="headings"
+        )
+        self.dashboard_tree.grid(row=0, column=0, sticky="nsew")
+        headings = (
+            "Piloto",
+            "Estado rally",
+            "Resultado",
+            "Tiempo",
+            "Anterior",
+            "Revisiones",
+            "Atención",
+        )
+        widths = (180, 130, 150, 120, 120, 90, 210)
+        for column, heading, width in zip(columns, headings, widths):
+            self.dashboard_tree.heading(column, text=heading)
+            self.dashboard_tree.column(
+                column,
+                width=width,
+                anchor="w" if column in {"participant", "alert"} else "center",
+            )
+        self.dashboard_tree.bind("<Double-1>", self._load_dashboard_selection)
+        scrollbar = ttk.Scrollbar(
+            table_frame, orient="vertical", command=self.dashboard_tree.yview
+        )
+        scrollbar.grid(row=0, column=1, sticky="ns")
+        self.dashboard_tree.configure(yscrollcommand=scrollbar.set)
+        ttk.Button(
+            table_frame,
+            text="Cargar participante seleccionado",
+            command=self._load_dashboard_selection,
+        ).grid(row=1, column=0, sticky="e", pady=(8, 0))
+
+        self._apply_dashboard_tags()
+        self._refresh_stage_dashboard(reset_stage=True)
+
+    def _on_dashboard_destroy(self, event):
+        if event.widget is self.dashboard_window:
+            self.dashboard_window = None
+            self.dashboard_tree = None
+            self.dashboard_competition_name = None
+            self._dashboard_rows_by_participant = {}
+
+    def _close_stage_dashboard(self):
+        window = self.dashboard_window
+        self.dashboard_window = None
+        self.dashboard_tree = None
+        self.dashboard_competition_name = None
+        self._dashboard_rows_by_participant = {}
+        if window is not None and window.winfo_exists():
+            window.destroy()
+
+    def _dashboard_stage_changed(self, _event=None):
+        self.dashboard_follow_var.set(False)
+        self._refresh_stage_dashboard()
+
+    def _go_to_current_stage(self):
+        self.dashboard_follow_var.set(True)
+        self._refresh_stage_dashboard(reset_stage=True)
+
+    # Recarga contadores y filas; se invoca también después de cada acción.
+    def _refresh_stage_dashboard(self, reset_stage=False):
+        if (
+            self.dashboard_window is None
+            or not self.dashboard_window.winfo_exists()
+            or not self.current_competition
+        ):
+            return
+        stages = self.current_competition["stages"]
+        self.dashboard_stage_combo["values"] = [
+            str(stage) for stage in range(1, stages + 1)
+        ]
+        selected_stage = None
+        if not reset_stage and not self.dashboard_follow_var.get():
+            try:
+                selected_stage = int(self.dashboard_stage_var.get())
+            except (TypeError, ValueError):
+                selected_stage = None
+        dashboard = self.service.get_stage_dashboard(
+            self.current_competition["name"], selected_stage
+        )
+        if dashboard is None:
+            return
+        self.dashboard_competition_name = dashboard["competition"]
+        self.dashboard_window.title(
+            f"Panel del tramo {dashboard['stage']} — {dashboard['competition']}"
+        )
+        self.dashboard_stage_combo.set(str(dashboard["stage"]))
+        for key, variable in self.dashboard_summary_vars.items():
+            variable.set(str(dashboard["counts"][key]))
+        self.dashboard_tree.delete(*self.dashboard_tree.get_children())
+        self._dashboard_rows_by_participant = {
+            row["participant"]: row for row in dashboard["rows"]
+        }
+        for row in dashboard["rows"]:
+            tags = []
+            if row["pending"]:
+                tags.append("pending")
+            if row["modified"]:
+                tags.append("modified")
+            if row["rally_status"] != "active":
+                tags.append("inactive")
+            if not tags:
+                tags.append("resolved")
+            self.dashboard_tree.insert(
+                "",
+                tk.END,
+                values=(
+                    row["participant"],
+                    row["rally_status_label"],
+                    row["result_status_label"],
+                    self.service.format_time(row["time_ms"])
+                    if row["time_ms"] is not None
+                    else "-",
+                    self.service.format_time(row["previous_time_ms"])
+                    if row["previous_time_ms"] is not None
+                    else "-",
+                    row["revision_count"],
+                    row["alert"],
+                ),
+                tags=tuple(tags),
+            )
+
+    # Lleva el piloto y el tramo del panel a los controles de edición.
+    def _load_dashboard_selection(self, _event=None):
+        if self.dashboard_tree is None:
+            return
+        selection = self.dashboard_tree.selection()
+        if not selection:
+            self.set_status("Seleccione un piloto en el panel.", ok=False)
+            return
+        participant = self.dashboard_tree.item(selection[0], "values")[0]
+        stage = self.dashboard_stage_var.get()
+        row = self._dashboard_rows_by_participant[participant]
+        for combo in (
+            self.add_participant_combo,
+            self.penalize_participant_combo,
+            self.status_participant_combo,
+        ):
+            combo.set(participant)
+        for combo in (
+            self.add_stage_combo,
+            self.fill_stage_combo,
+            self.penalize_stage_combo,
+            self.status_stage_combo,
+        ):
+            combo.set(stage)
+        current_time = (
+            self.service.format_time(row["time_ms"])
+            if row["time_ms"] is not None
+            else ""
+        )
+        self.add_time_var.set(current_time)
+        self.status_time_var.set(current_time)
+        self.result_status_var.set(
+            "Finalizado"
+            if row["result_status"] == "pending"
+            else self.service.STATUS_LABELS[row["result_status"]]
+        )
+        self.add_time_entry.focus_set()
+        self.lift()
+        self.set_status(
+            f"{participant} y tramo {stage} cargados en los formularios."
+        )
+
+    def _apply_dashboard_tags(self):
+        if self.dashboard_tree is None:
+            return
+        if self.dark_mode:
+            colors = {
+                "pending": "#6B4E16",
+                "modified": "#59406B",
+                "inactive": "#454545",
+                "resolved": "#234F34",
+            }
+        else:
+            colors = {
+                "pending": "#FFF3CD",
+                "modified": "#E8D9F6",
+                "inactive": "#E2E3E5",
+                "resolved": "#D4EDDA",
+            }
+        for tag, background in colors.items():
+            self.dashboard_tree.tag_configure(tag, background=background)
 
     # Renderiza la tabla de tiempos y ranking.
     def _render_table(self, competition):
@@ -310,7 +1046,7 @@ class RallyApp(tk.Tk):
     # Configura columnas y scrolls de la tabla.
     def _build_table(self, stages):
         self._clear_table()
-        columns = ["rank", "participant"] + [f"stage_{i}" for i in range(1, stages + 1)] + ["total", "diff"]
+        columns = ["rank", "participant", "status"] + [f"stage_{i}" for i in range(1, stages + 1)] + ["total", "diff"]
         self.tree = ttk.Treeview(self.table_frame, columns=columns, show="headings", height=16)
         self.tree.grid(row=0, column=0, sticky="nsew")
         self.tree.bind("<MouseWheel>", self._on_mousewheel)
@@ -320,12 +1056,14 @@ class RallyApp(tk.Tk):
         self.tree.bind("<Shift-Button-4>", self._on_shift_mousewheel)
         self.tree.bind("<Shift-Button-5>", self._on_shift_mousewheel)
 
-        headings = ["Pos", "Piloto"] + [f"Tramo {i}" for i in range(1, stages + 1)] + ["General", "Dif."]
+        headings = ["Pos", "Piloto", "Estado"] + [f"Tramo {i}" for i in range(1, stages + 1)] + ["General", "Dif."]
         for col, heading in zip(columns, headings):
             self.tree.heading(col, text=heading, command=lambda c=col: self.sort_by_column(c, stages))
-            anchor = "w" if col == "participant" else "center"
+            anchor = "w" if col in ("participant", "status") else "center"
             if col == "participant":
                 width = 180
+            elif col == "status":
+                width = 125
             elif col in ("total", "diff"):
                 width = 120
             else:
@@ -364,11 +1102,18 @@ class RallyApp(tk.Tk):
         self.tree.delete(*self.tree.get_children())
         for row in rows:
             rank = row["rank"]
-            diff_text = "-" if rank == 1 else f"+{self.service.format_time(row['diff'])}"
+            if row["diff"] is None:
+                diff_text = "-"
+            else:
+                diff_text = "-" if row["diff"] == 0 else f"+{self.service.format_time(row['diff'])}"
             values = [
                 rank,
                 row["participant"],
-                *[self.service.format_time(ms) for ms in row["stage_times"]],
+                row["classification_status"],
+                *[
+                    self.service.format_stage_result(result)
+                    for result in row["stage_results"]
+                ],
                 self.service.format_time(row["total"]),
                 diff_text,
             ]
@@ -382,19 +1127,32 @@ class RallyApp(tk.Tk):
         def missing_last(value):
             return value is None
 
-        if column == "rank" or column == "total":
+        if column == "rank":
+            key_func = lambda r: (
+                r.get("rally_status") == "disqualified",
+                r["rank"] if isinstance(r["rank"], int) else 0,
+            )
+        elif column == "total":
             key_func = lambda r: r["total"]
         elif column == "participant":
             key_func = lambda r: r["participant"].lower()
+        elif column == "status":
+            key_func = lambda r: r["classification_status"]
         elif column.startswith("stage_"):
             stage_index = int(column.split("_")[1]) - 1
             key_func = lambda r: (missing_last(r["stage_times"][stage_index]), r["stage_times"][stage_index] or 0)
         elif column == "diff":
-            key_func = lambda r: r["diff"]
+            key_func = lambda r: (r["diff"] is None, r["diff"] or 0)
         else:
             key_func = lambda r: r["total"]
 
-        sorted_rows = sorted(self.current_leaderboard, key=key_func)
+        sorted_rows = sorted(
+            self.current_leaderboard,
+            key=lambda row: (
+                row.get("rally_status") == "disqualified",
+                key_func(row),
+            ),
+        )
         self._populate_table(sorted_rows, stages)
 
     # Limpia tabla y scrollbars actuales.
@@ -413,6 +1171,7 @@ class RallyApp(tk.Tk):
         for combo in (
             self.add_participant_combo,
             self.penalize_participant_combo,
+            self.status_participant_combo,
         ):
             combo["values"] = participants
             if participants:
@@ -420,7 +1179,12 @@ class RallyApp(tk.Tk):
             else:
                 combo.set("")
 
-        for combo in (self.add_stage_combo, self.fill_stage_combo, self.penalize_stage_combo):
+        for combo in (
+            self.add_stage_combo,
+            self.fill_stage_combo,
+            self.penalize_stage_combo,
+            self.status_stage_combo,
+        ):
             combo["values"] = stage_values
             combo.set(stage_values[0] if stage_values else "")
 
@@ -438,9 +1202,41 @@ class RallyApp(tk.Tk):
         ok, msg = self.service.add_time_str(self.current_competition["name"], participant, int(stage), time_str)
         self.set_status(msg, ok=ok)
         if ok:
+            competition_name = self.current_competition["name"]
+            saved_stage = int(stage)
             self.add_time_var.set("")
             self.on_select_competition()
-            self.add_stage_combo.set(stage)
+            self._prepare_next_time_entry(
+                competition_name, participant, saved_stage
+            )
+
+    # Prepara el siguiente resultado pendiente después de guardar correctamente.
+    def _prepare_next_time_entry(
+        self, competition_name, saved_participant, saved_stage
+    ):
+        target_stage = saved_stage
+        next_participant = self.service.get_next_pending_participant(
+            competition_name, target_stage, saved_participant
+        )
+        if next_participant is None and self.current_competition:
+            target_stage = self.service.get_default_stage(
+                self.current_competition["id"],
+                self.current_competition["stages"],
+                self.current_competition["participants"],
+            )
+            next_participant = self.service.get_next_pending_participant(
+                competition_name, target_stage
+            )
+
+        self.add_stage_combo.set(str(target_stage))
+        self.status_stage_combo.set(str(target_stage))
+        if next_participant is not None:
+            self.add_participant_combo.set(next_participant)
+            self.status_participant_combo.set(next_participant)
+        else:
+            self.add_participant_combo.set(saved_participant)
+            self.status_participant_combo.set(saved_participant)
+        self._focus_time_shortcut()
 
     # Rellena abandonos en la etapa seleccionada.
     def fill_missing_clicked(self):
@@ -482,6 +1278,59 @@ class RallyApp(tk.Tk):
             penalty_seconds,
         )
         self.set_status(msg, ok=ok)
+        if ok:
+            self.on_select_competition()
+
+    # Aplica el estado seleccionado al participante y tramo.
+    def apply_status_clicked(self):
+        if not self.current_competition:
+            self.set_status("Seleccione una competicion.", ok=False)
+            return
+        participant = self.status_participant_var.get()
+        stage = self.status_stage_var.get()
+        if not participant or not stage:
+            self.set_status("Seleccione participante y tramo.", ok=False)
+            return
+        ok, message = self.service.set_result_status(
+            self.current_competition["name"],
+            participant,
+            int(stage),
+            self.result_status_var.get(),
+            self.status_time_var.get(),
+        )
+        self.set_status(message, ok=ok)
+        if ok:
+            self.status_time_var.set("")
+            self.on_select_competition()
+
+    # Marca el abandono definitivo del rally.
+    def retire_clicked(self):
+        if not self.current_competition:
+            self.set_status("Seleccione una competicion.", ok=False)
+            return
+        participant = self.status_participant_var.get()
+        stage = self.status_stage_var.get()
+        if not participant or not stage:
+            self.set_status("Seleccione participante y tramo.", ok=False)
+            return
+        completed = self.retirement_mode_var.get() == "Despues de finalizar"
+        ok, message = self.service.retire_from_rally(
+            self.current_competition["name"], participant, int(stage), completed
+        )
+        self.set_status(message, ok=ok)
+        if ok:
+            self.on_select_competition()
+
+    # Reactiva un participante retirado.
+    def reactivate_clicked(self):
+        if not self.current_competition:
+            self.set_status("Seleccione una competicion.", ok=False)
+            return
+        participant = self.status_participant_var.get()
+        ok, message = self.service.reactivate(
+            self.current_competition["name"], participant
+        )
+        self.set_status(message, ok=ok)
         if ok:
             self.on_select_competition()
 
@@ -695,6 +1544,8 @@ class RallyApp(tk.Tk):
             else:
                 self._unregister_text_widget(widget)
 
+        self._apply_dashboard_tags()
+
         self.theme_button.config(text="Modo oscuro" if self.dark_mode else "Modo claro")
 
     # Alterna entre modo claro y oscuro.
@@ -706,7 +1557,8 @@ class RallyApp(tk.Tk):
 # Arranca la aplicacion.
 def main():
     app = RallyApp()
-    app.mainloop()
+    if app.ready:
+        app.mainloop()
 
 
 if __name__ == "__main__":

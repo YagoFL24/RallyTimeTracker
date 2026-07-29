@@ -2,16 +2,17 @@
 
 ## 1. Entorno
 
-El proyecto no tiene dependencias de ejecución fuera de la biblioteca estándar de Python. La publicación oficial configura Python 3.12 en Windows.
+El proyecto usa `openpyxl` para Excel y `reportlab` para PDF. La publicación oficial configura Python 3.12 en Windows y obtiene las versiones fijadas en `requirements.txt`.
 
 Comprueba el entorno:
 
 ```bash
 python --version
+python -m pip install -r requirements.txt
 python -c "import tkinter, sqlite3; print('Tk', tkinter.TkVersion, 'SQLite', sqlite3.sqlite_version)"
 ```
 
-No hay `requirements.txt` ni `pyproject.toml`. PyInstaller solo es necesario para construir el ejecutable.
+PyInstaller solo es necesario para construir el ejecutable.
 
 ## 2. Ejecutar desde código
 
@@ -43,19 +44,24 @@ No uses una base real para pruebas destructivas. Crea un directorio temporal, ca
 
 ## 4. Pruebas y controles
 
-El repositorio contiene 51 pruebas unitarias y funcionales. Las operaciones de datos se ejecutan sobre bases SQLite temporales, nunca sobre `data/datos.db`.
+El repositorio contiene 88 pruebas unitarias y funcionales. Las operaciones de datos se ejecutan sobre bases SQLite temporales, nunca sobre `data/datos.db`.
 
 Cobertura automatizada actual:
 
 - parsing y formato de tiempos;
 - validación de competiciones, etapas, participantes y penalizaciones;
 - ciclo completo de alta, consulta, persistencia y borrado;
-- clasificación cuando todos los tiempos están completos y selección de etapa pendiente;
+- clasificación completa e incompleta, estados explícitos, retiradas y selección de etapa pendiente;
+- exportación e importación real de CSV/Excel y generación PDF;
+- resumen operativo del tramo, pendientes activos, revisiones y carga rápida en formularios;
+- presentación y ordenación de descalificados conservando resultados previos;
+- creación, rotación, validación y restauración atómica de backups SQLite;
 - abandonos, acumulación de penalizaciones y protección frente a overflow;
 - ordenación de tabla y carga de combos sin levantar una ventana real;
+- recorrido del siguiente piloto pendiente, cambio circular de piloto/tramo y guardado por teclado;
 - SemVer, lectura de commits, changelog, notas y salidas de GitHub Actions.
 
-Todavía no hay automatización de la renderización gráfica real, interacción con diálogos, empaquetado ejecutable, migraciones SQLite futuras ni los escenarios de clasificación incompleta que constan como defectos conocidos. Tampoco hay linter, formateador, comprobación de tipos o informe porcentual de cobertura.
+Todavía no hay automatización de la renderización gráfica real, interacción con diálogos o empaquetado ejecutable. Tampoco hay linter, formateador, comprobación de tipos o informe porcentual de cobertura.
 
 Ejecutar las pruebas disponibles:
 
@@ -91,7 +97,8 @@ Antes de automatizar casos de integración, conviene permitir inyectar la ruta d
 Instala PyInstaller:
 
 ```bash
-python -m pip install --upgrade pip pyinstaller
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt pyinstaller
 ```
 
 Ejecuta el mismo comando que usa GitHub Actions:
@@ -117,6 +124,7 @@ El archivo `RallyTimeTracker.spec` que puede existir localmente está ignorado p
 ```text
 checkout completo
   -> Python 3.12
+  -> instalar dependencias de requirements.txt
   -> release.py
   -> instalar PyInstaller (si hay release)
   -> compilar EXE
@@ -178,7 +186,7 @@ feat!: cambiar el formato de almacenamiento
 
 ### Cambio de esquema
 
-`CREATE TABLE IF NOT EXISTS` no migra tablas existentes. Cualquier cambio de columnas, restricciones o claves necesita una estrategia de migración versionada y copia previa. No basta con editar `_initialize_schema`.
+El esquema se administra en `database_schema.py` mediante `PRAGMA user_version`. Cualquier cambio futuro debe incrementar la versión, crear una copia previa, migrar dentro de una transacción y añadir una prueba desde cada versión soportada.
 
 ### Cambio visual
 

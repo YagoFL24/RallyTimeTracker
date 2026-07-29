@@ -62,7 +62,7 @@ class CompetitionLifecycleTests(TemporaryDatabaseTestCase):
         connection, _cursor = start_connection()
         self.assertEqual(connection.execute("SELECT COUNT(*) FROM competitions").fetchone()[0], 0)
         self.assertEqual(connection.execute("SELECT COUNT(*) FROM participants").fetchone()[0], 0)
-        self.assertEqual(connection.execute("SELECT COUNT(*) FROM times").fetchone()[0], 0)
+        self.assertEqual(connection.execute("SELECT COUNT(*) FROM stage_results").fetchone()[0], 0)
         connection.close()
 
     def test_duplicate_competition_does_not_leave_partial_participants(self):
@@ -78,11 +78,11 @@ class CompetitionLifecycleTests(TemporaryDatabaseTestCase):
             (competition_id,),
         ).fetchall()
         connection.close()
-        self.assertEqual(participants, [("Ana",), ("Luis",)])
+        self.assertEqual([tuple(row) for row in participants], [("Ana",), ("Luis",)])
 
     def test_schema_initialization_is_idempotent_and_persistent(self):
         connection, _cursor = start_connection()
-        expected_tables = {"competitions", "participants", "times"}
+        expected_tables = {"competitions", "participants", "stage_results"}
         tables = {
             row[0]
             for row in connection.execute(
@@ -98,7 +98,7 @@ class CompetitionLifecycleTests(TemporaryDatabaseTestCase):
             "SELECT id FROM competitions WHERE competition_name = 'Rally'"
         ).fetchone()
         connection.close()
-        self.assertEqual(persisted, (competition_id,))
+        self.assertEqual(tuple(persisted), (competition_id,))
 
 
 class LeaderboardTests(TemporaryDatabaseTestCase):
@@ -118,8 +118,18 @@ class LeaderboardTests(TemporaryDatabaseTestCase):
             )
 
         leaderboard = self.service.get_competition_info("Rally")["leaderboard"]
+        projected = [
+            {
+                "rank": row["rank"],
+                "participant": row["participant"],
+                "stage_times": row["stage_times"],
+                "total": row["total"],
+                "diff": row["diff"],
+            }
+            for row in leaderboard
+        ]
         self.assertEqual(
-            leaderboard,
+            projected,
             [
                 {
                     "rank": 1,
@@ -342,9 +352,9 @@ class GuiLogicTests(unittest.TestCase):
 
     def test_table_sorting_handles_text_totals_and_missing_stage_times(self):
         rows = [
-            {"participant": "Luis", "total": 130, "diff": 10, "stage_times": [60, 70]},
-            {"participant": "ana", "total": 120, "diff": 0, "stage_times": [None, 120]},
-            {"participant": "Marta", "total": 125, "diff": 5, "stage_times": [55, 70]},
+            {"rank": 2, "participant": "Luis", "total": 130, "diff": 10, "stage_times": [60, 70]},
+            {"rank": 3, "participant": "ana", "total": 120, "diff": 0, "stage_times": [None, 120]},
+            {"rank": 1, "participant": "Marta", "total": 125, "diff": 5, "stage_times": [55, 70]},
         ]
 
         class FakeView:
@@ -370,26 +380,56 @@ class GuiLogicTests(unittest.TestCase):
         self.assertEqual(
             [row["total"] for row in view.sorted_rows], [120, 125, 130]
         )
+        RallyApp.sort_by_column(view, "rank", 2)
+        self.assertEqual(
+            [row["participant"] for row in view.sorted_rows],
+            ["Marta", "Luis", "ana"],
+        )
+        view.current_leaderboard = rows + [
+            {
+                "rank": "DSQ",
+                "participant": "Zoe",
+                "rally_status": "disqualified",
+                "total": 50,
+                "diff": None,
+                "stage_times": [50, None],
+            }
+        ]
+        for row in rows:
+            row["rally_status"] = "active"
+        RallyApp.sort_by_column(view, "rank", 2)
+        self.assertEqual(view.sorted_rows[-1]["participant"], "Zoe")
+        RallyApp.sort_by_column(view, "total", 2)
+        self.assertEqual(view.sorted_rows[-1]["participant"], "Zoe")
+        RallyApp.sort_by_column(view, "participant", 2)
+        self.assertEqual(view.sorted_rows[-1]["participant"], "Zoe")
         self.assertEqual(view.stages, 2)
 
     def test_action_sources_receive_all_participants_and_stages(self):
         class FakeView:
             add_participant_combo = FakeCombo()
             penalize_participant_combo = FakeCombo()
+            status_participant_combo = FakeCombo()
             add_stage_combo = FakeCombo()
             fill_stage_combo = FakeCombo()
             penalize_stage_combo = FakeCombo()
+            status_stage_combo = FakeCombo()
 
         view = FakeView()
         RallyApp._update_action_sources(view, ["Ana", "Luis"], 3)
 
-        for combo in (view.add_participant_combo, view.penalize_participant_combo):
+        for combo in (
+            view.add_participant_combo,
+            view.penalize_participant_combo,
+            view.status_participant_combo,
+        ):
             self.assertEqual(combo.values, ["Ana", "Luis"])
             self.assertEqual(combo.selected, "Ana")
         for combo in (
             view.add_stage_combo,
             view.fill_stage_combo,
             view.penalize_stage_combo,
+            view.status_stage_combo,
         ):
             self.assertEqual(combo.values, ["1", "2", "3"])
             self.assertEqual(combo.selected, "1")
