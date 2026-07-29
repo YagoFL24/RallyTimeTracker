@@ -598,6 +598,47 @@ class RallyService:
                 return stage
         return stages
 
+    # Devuelve el siguiente participante activo pendiente, respetando el orden de alta.
+    def get_next_pending_participant(
+        self, competition_name, stage, current_participant=None
+    ):
+        competition = self.get_competition_info(competition_name)
+        if competition is None:
+            return None
+        if (
+            not self._is_strict_int(stage)
+            or not 1 <= stage <= competition["stages"]
+        ):
+            return None
+
+        records = {
+            row["participant_name"]: row
+            for row in competition["participant_records"]
+        }
+        results = {
+            row["participant_name"]: row
+            for row in competition["results"]
+            if row["stage_number"] == stage
+        }
+        participants = competition["participants"]
+        pending = {
+            participant
+            for participant in participants
+            if records[participant]["rally_status"] == "active"
+            and results[participant]["status"] == "pending"
+        }
+        if not pending:
+            return None
+
+        start = 0
+        if current_participant in participants:
+            start = participants.index(current_participant) + 1
+        for offset in range(len(participants)):
+            participant = participants[(start + offset) % len(participants)]
+            if participant in pending:
+                return participant
+        return None
+
     def format_stage_result(self, result):
         status = result["status"]
         if status == "finished":

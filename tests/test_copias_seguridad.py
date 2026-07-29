@@ -40,6 +40,7 @@ class BackupTests(unittest.TestCase):
         self.assertTrue(validate_backup(path))
         backups, directory, error = self.service.list_database_backups()
         self.assertIsNone(error)
+        self.assertEqual(Path(directory), Path(directory).resolve())
         self.assertEqual(Path(directory), path.parent)
         self.assertEqual(backups[0]["name"], path.name)
         self.assertEqual(backups[0]["reason"], "manual")

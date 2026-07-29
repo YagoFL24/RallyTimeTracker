@@ -34,6 +34,7 @@ class RallyApp(tk.Tk):
         self._configure_text_rendering()
 
         self._build_ui()
+        self._bind_keyboard_shortcuts()
         self._set_app_icon()
         self.apply_theme()
         self.current_leaderboard = []
@@ -172,7 +173,12 @@ class RallyApp(tk.Tk):
             command=self.open_stage_dashboard,
             state="disabled",
         )
-        self.dashboard_button.grid(row=0, column=1, sticky="e")
+        self.dashboard_button.grid(row=0, column=1, sticky="e", padx=(0, 6))
+        ttk.Button(
+            header,
+            text="Atajos",
+            command=self.show_shortcuts_help,
+        ).grid(row=0, column=2, sticky="e")
 
         self.table_frame = ttk.Frame(panel)
         self.table_frame.grid(row=1, column=0, sticky="nsew", pady=8)
@@ -278,6 +284,10 @@ class RallyApp(tk.Tk):
         ttk.Button(frame, text="Guardar", command=self.add_time_clicked).grid(
             row=3, column=0, columnspan=2, sticky="ew", pady=(6, 0)
         )
+        ttk.Label(
+            frame,
+            text="F2 tiempo · Ctrl+↕ piloto · Ctrl+↔ tramo · Ctrl+Enter guardar",
+        ).grid(row=4, column=0, columnspan=2, sticky="w", pady=(5, 0))
 
     # Crea el formulario para rellenar abandonos.
     def _build_fill_missing(self, parent):
@@ -330,6 +340,89 @@ class RallyApp(tk.Tk):
     def set_status(self, message, ok=True):
         prefix = "OK" if ok else "Aviso"
         self.status_var.set(f"{prefix}: {message}")
+
+    # Registra los atajos de introducción rápida de resultados.
+    def _bind_keyboard_shortcuts(self):
+        self.bind("<F1>", self.show_shortcuts_help)
+        self.bind("<F2>", self._focus_time_shortcut)
+        self.bind("<Control-Return>", self._save_time_shortcut)
+        self.bind("<Control-Up>", self._previous_participant_shortcut)
+        self.bind("<Control-Down>", self._next_participant_shortcut)
+        self.bind("<Control-Left>", self._previous_stage_shortcut)
+        self.bind("<Control-Right>", self._next_stage_shortcut)
+        self.bind("<Control-p>", self._open_dashboard_shortcut)
+        self.add_time_entry.bind("<Return>", self._save_time_shortcut)
+
+    # Muestra una referencia accesible de todos los atajos disponibles.
+    def show_shortcuts_help(self, _event=None):
+        messagebox.showinfo(
+            "Atajos de teclado",
+            "F1\tMostrar esta ayuda\n"
+            "F2\tIr al campo de tiempo\n"
+            "Enter\tGuardar desde el campo de tiempo\n"
+            "Ctrl+Enter\tGuardar el resultado\n"
+            "Ctrl+↑ / Ctrl+↓\tPiloto anterior / siguiente\n"
+            "Ctrl+← / Ctrl+→\tTramo anterior / siguiente\n"
+            "Ctrl+P\tAbrir el panel del tramo",
+            parent=self,
+        )
+        return "break"
+
+    def _focus_time_shortcut(self, _event=None):
+        if not self.current_competition:
+            self.set_status("Seleccione una competicion.", ok=False)
+            return "break"
+        self.add_time_entry.focus_set()
+        self.add_time_entry.selection_range(0, tk.END)
+        return "break"
+
+    def _save_time_shortcut(self, _event=None):
+        self.add_time_clicked()
+        return "break"
+
+    @staticmethod
+    def _cycle_combobox(combo, step):
+        values = list(combo["values"])
+        if not values:
+            return None
+        current = combo.get()
+        try:
+            index = values.index(current)
+        except ValueError:
+            index = -1 if step > 0 else 0
+        selected = values[(index + step) % len(values)]
+        combo.set(selected)
+        return selected
+
+    def _cycle_result_participant(self, step):
+        if not self.current_competition:
+            self.set_status("Seleccione una competicion.", ok=False)
+            return "break"
+        self._cycle_combobox(self.add_participant_combo, step)
+        return self._focus_time_shortcut()
+
+    def _cycle_result_stage(self, step):
+        if not self.current_competition:
+            self.set_status("Seleccione una competicion.", ok=False)
+            return "break"
+        self._cycle_combobox(self.add_stage_combo, step)
+        return self._focus_time_shortcut()
+
+    def _previous_participant_shortcut(self, _event=None):
+        return self._cycle_result_participant(-1)
+
+    def _next_participant_shortcut(self, _event=None):
+        return self._cycle_result_participant(1)
+
+    def _previous_stage_shortcut(self, _event=None):
+        return self._cycle_result_stage(-1)
+
+    def _next_stage_shortcut(self, _event=None):
+        return self._cycle_result_stage(1)
+
+    def _open_dashboard_shortcut(self, _event=None):
+        self.open_stage_dashboard()
+        return "break"
 
     # Carga el icono de la aplicacion.
     def _set_app_icon(self):
@@ -1109,9 +1202,41 @@ class RallyApp(tk.Tk):
         ok, msg = self.service.add_time_str(self.current_competition["name"], participant, int(stage), time_str)
         self.set_status(msg, ok=ok)
         if ok:
+            competition_name = self.current_competition["name"]
+            saved_stage = int(stage)
             self.add_time_var.set("")
             self.on_select_competition()
-            self.add_stage_combo.set(stage)
+            self._prepare_next_time_entry(
+                competition_name, participant, saved_stage
+            )
+
+    # Prepara el siguiente resultado pendiente después de guardar correctamente.
+    def _prepare_next_time_entry(
+        self, competition_name, saved_participant, saved_stage
+    ):
+        target_stage = saved_stage
+        next_participant = self.service.get_next_pending_participant(
+            competition_name, target_stage, saved_participant
+        )
+        if next_participant is None and self.current_competition:
+            target_stage = self.service.get_default_stage(
+                self.current_competition["id"],
+                self.current_competition["stages"],
+                self.current_competition["participants"],
+            )
+            next_participant = self.service.get_next_pending_participant(
+                competition_name, target_stage
+            )
+
+        self.add_stage_combo.set(str(target_stage))
+        self.status_stage_combo.set(str(target_stage))
+        if next_participant is not None:
+            self.add_participant_combo.set(next_participant)
+            self.status_participant_combo.set(next_participant)
+        else:
+            self.add_participant_combo.set(saved_participant)
+            self.status_participant_combo.set(saved_participant)
+        self._focus_time_shortcut()
 
     # Rellena abandonos en la etapa seleccionada.
     def fill_missing_clicked(self):
