@@ -104,6 +104,101 @@ class RallyService:
             return False, f"No se pudo crear el PDF: {exc}"
         return True, "Clasificación PDF guardada correctamente."
 
+    # Resume el estado operativo de un tramo para el panel de carrera.
+    def get_stage_dashboard(self, competition_name, stage=None):
+        competition = self.get_competition_info(competition_name)
+        if competition is None:
+            return None
+        if stage is None:
+            stage = self.get_default_stage(
+                competition["id"],
+                competition["stages"],
+                competition["participants"],
+            )
+        if not self._is_strict_int(stage) or not 1 <= stage <= competition["stages"]:
+            return None
+
+        records = {
+            row["participant_name"]: row
+            for row in competition["participant_records"]
+        }
+        stage_results = {
+            row["participant_name"]: row
+            for row in competition["results"]
+            if row["stage_number"] == stage
+        }
+        rows = []
+        for participant_name in competition["participants"]:
+            record = records[participant_name]
+            result = stage_results[participant_name]
+            pending = (
+                record["rally_status"] == "active"
+                and result["status"] == "pending"
+            )
+            modified = result["revision_count"] > 0
+            display_result_status = result["status"]
+            if (
+                record["rally_status"] == "disqualified"
+                and result["time_ms"] is None
+            ):
+                display_result_status = "dsq"
+                result_label = self.STATUS_LABELS["dsq"]
+            elif (
+                record["rally_status"] == "retired"
+                and record["retired_after_stage"] < stage
+                and result["status"] == "pending"
+            ):
+                result_label = "No participa"
+            else:
+                result_label = self.STATUS_LABELS[result["status"]]
+            alerts = []
+            if pending:
+                alerts.append("Pendiente")
+            if modified:
+                alerts.append("Resultado modificado")
+            rows.append(
+                {
+                    "participant": participant_name,
+                    "rally_status": record["rally_status"],
+                    "rally_status_label": {
+                        "active": "Activo",
+                        "retired": "Retirado",
+                        "disqualified": "Descalificado",
+                    }[record["rally_status"]],
+                    "result_status": display_result_status,
+                    "result_status_label": result_label,
+                    "time_ms": result["time_ms"],
+                    "previous_time_ms": result["previous_time_ms"],
+                    "revision_count": result["revision_count"],
+                    "pending": pending,
+                    "modified": modified,
+                    "alert": " · ".join(alerts) if alerts else "-",
+                }
+            )
+        rows.sort(
+            key=lambda row: (
+                not row["pending"],
+                not row["modified"],
+                row["participant"].casefold(),
+            )
+        )
+        counts = {
+            "total": len(rows),
+            "pending": sum(row["pending"] for row in rows),
+            "finished": sum(row["result_status"] == "finished" for row in rows),
+            "stage_dnf": sum(row["result_status"] == "stage_dnf" for row in rows),
+            "dns": sum(row["result_status"] == "dns" for row in rows),
+            "dsq": sum(row["result_status"] == "dsq" for row in rows),
+            "modified": sum(row["modified"] for row in rows),
+        }
+        return {
+            "competition": competition["name"],
+            "stage": stage,
+            "stages": competition["stages"],
+            "counts": counts,
+            "rows": rows,
+        }
+
     def _available_import_name(self, original_name):
         existing = {name.casefold() for name in self.list_competitions()}
         if original_name.casefold() not in existing:
@@ -344,8 +439,6 @@ class RallyService:
 
         rows = []
         for participant in participant_records:
-            if participant["rally_status"] == "disqualified":
-                continue
             name = participant["participant_name"]
             stage_map = by_participant.get(name, {})
             stage_results = []
@@ -361,13 +454,26 @@ class RallyService:
                         "previous_time_ms": None,
                     }
                 )
+                if participant["rally_status"] == "disqualified":
+                    if (
+                        result["status"] == "dsq"
+                        and result["time_ms"] is None
+                        and result.get("previous_time_ms") is not None
+                    ):
+                        result["status"] = "finished"
+                        result["time_ms"] = result["previous_time_ms"]
+                    elif result["time_ms"] is None:
+                        result["status"] = "dsq"
                 result["stage_started"] = stage in started_stages
                 stage_results.append(result)
                 stage_times.append(result["time_ms"])
             completed = sum(time is not None for time in stage_times)
             total = sum(time for time in stage_times if time is not None)
             statuses = {result["status"] for result in stage_results}
-            if participant["rally_status"] == "retired":
+            if participant["rally_status"] == "disqualified":
+                group = 2
+                classification_status = "Descalificado"
+            elif participant["rally_status"] == "retired":
                 group = 1
                 classification_status = "Retirado"
             elif "pending" in statuses:
@@ -403,16 +509,21 @@ class RallyService:
         )
         best_time_by_progress = {}
         for row in rows:
-            if row["completed_stages"] <= 0:
+            if row["_group"] == 2 or row["completed_stages"] <= 0:
                 continue
             progress_key = (row["_group"], row["completed_stages"])
             best_time_by_progress[progress_key] = min(
                 row["total"],
                 best_time_by_progress.get(progress_key, row["total"]),
             )
-        for rank, row in enumerate(rows, start=1):
-            row["rank"] = rank
-            if row["completed_stages"] > 0:
+        rank = 1
+        for row in rows:
+            if row["_group"] == 2:
+                row["rank"] = "DSQ"
+            else:
+                row["rank"] = rank
+                rank += 1
+            if row["_group"] != 2 and row["completed_stages"] > 0:
                 progress_key = (row["_group"], row["completed_stages"])
                 row["diff"] = (
                     row["total"]

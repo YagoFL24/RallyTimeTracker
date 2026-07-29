@@ -164,7 +164,7 @@ class ExplicitStageStatusTests(TemporaryDatabaseTestCase):
         self.assertEqual(luis[1]["status"], "pending")
         self.assertEqual(get_participant_records(competition_id)[1]["rally_status"], "active")
 
-    def test_disqualified_is_excluded_and_can_be_reverted(self):
+    def test_disqualified_is_last_keeps_time_and_can_be_reverted(self):
         competition_id = self.create_competition(stages=1, participants=["Ana", "Luis"])
         self.assertTrue(self.service.add_time_str("Rally", "Ana", 1, "1:00.000")[0])
         self.assertTrue(self.service.add_time_str("Rally", "Luis", 1, "1:01.000")[0])
@@ -172,7 +172,16 @@ class ExplicitStageStatusTests(TemporaryDatabaseTestCase):
             self.service.set_result_status("Rally", "Luis", 1, "Descalificado")[0]
         )
         info = self.service.get_competition_info("Rally")
-        self.assertEqual([row["participant"] for row in info["leaderboard"]], ["Ana"])
+        self.assertEqual(
+            [row["participant"] for row in info["leaderboard"]],
+            ["Ana", "Luis"],
+        )
+        luis = info["leaderboard"][-1]
+        self.assertEqual(luis["rank"], "DSQ")
+        self.assertIsNone(luis["diff"])
+        self.assertEqual(luis["classification_status"], "Descalificado")
+        self.assertEqual(luis["stage_times"], [61_000])
+        self.assertEqual(luis["stage_results"][0]["status"], "finished")
 
         self.assertTrue(
             self.service.set_result_status(
@@ -182,6 +191,48 @@ class ExplicitStageStatusTests(TemporaryDatabaseTestCase):
         records = get_participant_records(competition_id)
         self.assertEqual(records[1]["rally_status"], "active")
         self.assertEqual(len(self.service.get_competition_info("Rally")["leaderboard"]), 2)
+
+    def test_disqualified_are_sorted_by_timed_stages_then_total(self):
+        self.create_competition(
+            stages=3, participants=["Ana", "Luis", "Marta", "Pablo"]
+        )
+        for participant, stage, time_text in (
+            ("Ana", 1, "1:10.000"),
+            ("Ana", 2, "1:30.000"),
+            ("Luis", 1, "1:00.000"),
+            ("Marta", 1, "0:50.000"),
+            ("Pablo", 1, "0:55.000"),
+        ):
+            self.assertTrue(
+                self.service.add_time_str("Rally", participant, stage, time_text)[0]
+            )
+        self.assertTrue(
+            self.service.set_result_status(
+                "Rally", "Luis", 2, "No finalizado"
+            )[0]
+        )
+        for participant, stage in (("Luis", 3), ("Marta", 2), ("Pablo", 2)):
+            self.assertTrue(
+                self.service.set_result_status(
+                    "Rally", participant, stage, "Descalificado"
+                )[0]
+            )
+
+        leaderboard = self.service.get_competition_info("Rally")["leaderboard"]
+        self.assertEqual(
+            [row["participant"] for row in leaderboard],
+            ["Ana", "Luis", "Marta", "Pablo"],
+        )
+        self.assertEqual([row["rank"] for row in leaderboard], [1, "DSQ", "DSQ", "DSQ"])
+        self.assertEqual(
+            [row["completed_stages"] for row in leaderboard[1:]],
+            [2, 1, 1],
+        )
+        self.assertEqual(
+            [self.service.format_stage_result(result) for result in leaderboard[1]["stage_results"]],
+            ["1:00.000", "NF 1:40.000", "DSQ"],
+        )
+        self.assertTrue(all(row["diff"] is None for row in leaderboard[1:]))
 
 
 class RallyRetirementTests(TemporaryDatabaseTestCase):

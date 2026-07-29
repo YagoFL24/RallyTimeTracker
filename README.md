@@ -10,12 +10,14 @@ Aplicación de escritorio para registrar y clasificar tiempos de una competició
 - Definir el número de tramos y la lista de participantes.
 - Registrar o corregir el tiempo de un piloto en un tramo.
 - Asignar estados por piloto y tramo: pendiente, finalizado, no finalizado, no presentado o descalificado.
+- Mantener los descalificados visibles al final, conservando sus tiempos registrados.
 - Completar tramos no finalizados con el peor tiempo más 10 segundos sin retirar al piloto del rally.
 - Retirar definitivamente un participante del rally y reactivarlo posteriormente.
 - Aplicar penalizaciones acumulativas en segundos.
 - Consultar la clasificación, el total y la diferencia con el líder.
 - Exportar la competición seleccionada a CSV o Excel e importarla sin sobrescribir datos existentes.
 - Guardar la clasificación como un PDF paginado y listo para imprimir.
+- Supervisar el tramo actual con contadores, pendientes y resultados modificados.
 - Ordenar visualmente la tabla por posición, piloto, tramo, total o diferencia.
 - Alternar entre tema claro y oscuro.
 - Usar una interfaz gráfica principal y una CLI heredada.
@@ -52,6 +54,7 @@ python src/cli_main.py
 6. Para sumar una sanción, escoge piloto, etapa y segundos en **Penalizar**.
 7. Haz clic en una cabecera para ordenar la vista.
 8. Usa **Exportar**, **Importar** o **Guardar PDF** desde el panel de competiciones.
+9. Pulsa **Panel del tramo** para supervisar y cargar rápidamente los resultados pendientes.
 
 Consulta la [guía de usuario](docs/MANUAL_USUARIO.md) para conocer todos los flujos y las reglas de cálculo.
 
@@ -95,6 +98,7 @@ RallyTimeTracker/
 │   ├── test_funcionalidad.py    # Flujos funcionales y lógica de GUI
 │   ├── test_estados.py           # Estados, retiradas y migración
 │   ├── test_intercambio.py       # Ida y vuelta CSV/Excel y PDF
+│   ├── test_panel_tramo.py       # Panel operativo, alertas y carga rápida
 │   ├── test_validaciones.py     # Reglas y límites de entrada
 │   └── test_release.py          # SemVer, changelog y publicación
 ├── CHANGELOG.md

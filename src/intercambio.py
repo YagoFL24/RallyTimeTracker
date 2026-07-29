@@ -410,10 +410,6 @@ def _rows_to_snapshot(rows):
                 raise ExchangeError(
                     f"Falta el estado anterior a la descalificación de {participant['name']}."
                 )
-            if not has_dsq:
-                raise ExchangeError(
-                    f"El participante descalificado {participant['name']} no tiene un tramo DSQ."
-                )
         elif has_dsq:
             raise ExchangeError(
                 f"El participante {participant['name']} tiene un tramo DSQ pero no está descalificado."

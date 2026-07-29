@@ -58,6 +58,7 @@ Los imports de `src` son imports planos, no un paquete Python instalable. Por es
 - `current_competition`: diccionario de la competición cargada;
 - `current_leaderboard`: filas del ranking original;
 - `dark_mode` y `theme_colors`: estado visual;
+- `dashboard_window` y `dashboard_tree`: panel operativo opcional del tramo;
 - variables Tkinter de formularios y widgets.
 
 No existe caché de dominio. Después de una escritura correcta, la GUI consulta otra vez SQLite y reconstruye la tabla. Si una recarga ya no encuentra la competición seleccionada —por ejemplo, después de borrarla—, `_reset_competition_view` limpia la selección, la clasificación, la cabecera y los controles de acciones.
@@ -198,9 +199,17 @@ La lectura comprueba cabeceras, versión, metadatos comunes, estados, tiempos, a
 
 La clasificación PDF se genera con ReportLab en A4 horizontal. Los tramos se agrupan en bloques de ocho para evitar tablas ilegibles y las cabeceras se repiten cuando una tabla ocupa varias páginas.
 
+### Panel del tramo
+
+`RallyService.get_stage_dashboard` construye una vista operativa sin modificar datos. Considera pendiente solo una fila `pending` cuyo participante continúa `active`, proyecta como `dsq` cualquier tramo sin tiempo de un participante descalificado, agrupa contadores por estado y marca como modificada una fila con `revision_count > 0`.
+
+`RallyApp` presenta el resumen en un `Toplevel`. Por defecto consulta de nuevo el tramo actual después de cada acción; el usuario puede desactivar el seguimiento para fijar otro tramo. La selección de una fila copia piloto y tramo a los formularios existentes, por lo que el panel no duplica operaciones de escritura ni reglas de validación.
+
 ## 8. Cálculo de clasificación
 
-`RallyService._build_leaderboard` recibe los resultados con su número real de tramo, por lo que conserva huecos. Ordena primero los participantes activos y después los retirados; excluye descalificados. Dentro de cada grupo prioriza más tramos completados y después menor tiempo acumulado. Las diferencias provisionales comparan participantes del mismo grupo y con el mismo número de tramos cronometrados.
+`RallyService._build_leaderboard` recibe los resultados con su número real de tramo, por lo que conserva huecos. Ordena participantes activos, retirados y descalificados, en ese orden. Dentro de cada grupo prioriza más tramos con tiempo —`finished` o `stage_dnf`— y después menor tiempo acumulado.
+
+Los descalificados permanecen al final con rango textual `DSQ` y sin diferencia. Sus resultados con tiempo se conservan y los huecos se proyectan como `dsq` únicamente para la presentación. Para bases creadas antes de esta regla, un tiempo desplazado a `previous_time_ms` por la descalificación se recupera en la vista. Las diferencias provisionales solo comparan participantes no descalificados del mismo grupo y con el mismo progreso.
 
 ## 9. Presentación
 

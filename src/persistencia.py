@@ -324,7 +324,19 @@ def set_stage_status(competition_name, stage, participant, status, time_ms=None)
     elif status not in {"stage_dnf", "finished"}:
         time_ms = None
     try:
-        ok = _record_revision(cursor, person["id"], stage, status, time_ms)
+        current_result = cursor.execute(
+            "SELECT status, time_ms FROM stage_results "
+            "WHERE participant_id=? AND stage_number=?",
+            (person["id"], stage),
+        ).fetchone()
+        preserve_timed_result = (
+            status == "dsq"
+            and current_result is not None
+            and current_result["time_ms"] is not None
+        )
+        ok = True if preserve_timed_result else _record_revision(
+            cursor, person["id"], stage, status, time_ms
+        )
         if status == "dsq":
             previous = person["rally_status"]
             if previous != "disqualified":

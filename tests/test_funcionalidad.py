@@ -385,6 +385,24 @@ class GuiLogicTests(unittest.TestCase):
             [row["participant"] for row in view.sorted_rows],
             ["Marta", "Luis", "ana"],
         )
+        view.current_leaderboard = rows + [
+            {
+                "rank": "DSQ",
+                "participant": "Zoe",
+                "rally_status": "disqualified",
+                "total": 50,
+                "diff": None,
+                "stage_times": [50, None],
+            }
+        ]
+        for row in rows:
+            row["rally_status"] = "active"
+        RallyApp.sort_by_column(view, "rank", 2)
+        self.assertEqual(view.sorted_rows[-1]["participant"], "Zoe")
+        RallyApp.sort_by_column(view, "total", 2)
+        self.assertEqual(view.sorted_rows[-1]["participant"], "Zoe")
+        RallyApp.sort_by_column(view, "participant", 2)
+        self.assertEqual(view.sorted_rows[-1]["participant"], "Zoe")
         self.assertEqual(view.stages, 2)
 
     def test_action_sources_receive_all_participants_and_stages(self):
