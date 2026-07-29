@@ -1,5 +1,20 @@
 # Changelog
 
+## v1.2.0 - 2026-07-29
+
+- Merge pull request #17 from YagoFL24/feat/v1.2.0
+- Merge pull request #16 from YagoFL24/feat/copias-seguridad-restauracion
+- Merge pull request #18 from YagoFL24/feat/atajos-teclado-resultados
+- Merge pull request #20 from YagoFL24/fix/normalizar-rutas-backup-windows
+- Merge pull request #19 from YagoFL24/fix/normalizar-rutas-backup-windows
+- fix: normalizar rutas de backups en Windows
+- feat: aÃ±adir atajos de teclado para introducir resultados
+- Merge pull request #13 from YagoFL24/feat/panel-control-tramo-actual
+- feat: aÃ±adir copias de seguridad automÃ¡ticas y restauraciÃ³n
+- feat: aÃ±adir panel de control del tramo actual
+- feat: aÃ±adir exportaciÃ³n e importaciÃ³n CSV/Excel y clasificaciÃ³n PDF
+- Merge pull request #12 from YagoFL24/feat/estados-participantes-tramos
+- feat: aÃ±adir estados de tramo y abandono del rally
 ## v1.1.3 - 2026-07-26
 
 - Merge pull request #11 from YagoFL24/fix/limpiar-estado-tras-borrado
