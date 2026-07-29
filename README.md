@@ -18,6 +18,8 @@ Aplicación de escritorio para registrar y clasificar tiempos de una competició
 - Exportar la competición seleccionada a CSV o Excel e importarla sin sobrescribir datos existentes.
 - Guardar la clasificación como un PDF paginado y listo para imprimir.
 - Supervisar el tramo actual con contadores, pendientes y resultados modificados.
+- Crear copias automáticas y manuales de SQLite y restaurarlas desde la aplicación.
+- Introducir resultados con atajos de teclado y avanzar automáticamente al siguiente piloto pendiente.
 - Ordenar visualmente la tabla por posición, piloto, tramo, total o diferencia.
 - Alternar entre tema claro y oscuro.
 - Usar una interfaz gráfica principal y una CLI heredada.
@@ -55,6 +57,8 @@ python src/cli_main.py
 7. Haz clic en una cabecera para ordenar la vista.
 8. Usa **Exportar**, **Importar** o **Guardar PDF** desde el panel de competiciones.
 9. Pulsa **Panel del tramo** para supervisar y cargar rápidamente los resultados pendientes.
+10. Usa **Copias de seguridad** para crear o restaurar una copia de la base.
+11. Pulsa **Atajos** o `F1` para consultar las teclas de introducción rápida.
 
 Consulta la [guía de usuario](docs/MANUAL_USUARIO.md) para conocer todos los flujos y las reglas de cálculo.
 
@@ -66,6 +70,8 @@ Consulta la [guía de usuario](docs/MANUAL_USUARIO.md) para conocer todos los fl
 | Ejecutable de Windows | `%LOCALAPPDATA%\RallyTimeTracker\datos.db` |
 
 Para hacer una copia de seguridad, cierra la aplicación y copia `datos.db`. La aplicación no sincroniza ni envía información a servicios externos.
+
+La GUI crea además una copia consistente en cada arranque y antes de importar o restaurar. Se almacenan bajo `data/backups` al ejecutar desde código y bajo `%LOCALAPPDATA%\RallyTimeTracker\backups` en el ejecutable.
 
 ## Documentación
 
@@ -91,6 +97,7 @@ RallyTimeTracker/
 │   ├── database_schema.py        # Esquema versionado y migración SQLite
 │   ├── persistencia.py          # Acceso SQLite
 │   ├── intercambio.py           # CSV, Excel, importación y PDF
+│   ├── copias_seguridad.py      # Backups SQLite, validación y restauración
 │   ├── gestorTiempos.py         # Conversión y ordenación de tiempos
 │   ├── cli_main.py              # Entrada de la CLI heredada
 │   └── interfaz.py              # Presentación de la CLI
@@ -99,6 +106,8 @@ RallyTimeTracker/
 │   ├── test_estados.py           # Estados, retiradas y migración
 │   ├── test_intercambio.py       # Ida y vuelta CSV/Excel y PDF
 │   ├── test_panel_tramo.py       # Panel operativo, alertas y carga rápida
+│   ├── test_copias_seguridad.py  # Creación, rotación y restauración
+│   ├── test_atajos_teclado.py     # Atajos y avance entre resultados pendientes
 │   ├── test_validaciones.py     # Reglas y límites de entrada
 │   └── test_release.py          # SemVer, changelog y publicación
 ├── CHANGELOG.md

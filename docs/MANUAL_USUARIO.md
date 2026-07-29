@@ -71,7 +71,7 @@ Ejemplos habituales:
 
 Si ya existe un registro para ese participante y etapa, el nuevo valor sustituye al anterior. No hay historial ni botón para deshacer la corrección.
 
-Después de guardar, la tabla se vuelve a cargar, el campo de tiempo se vacía y la etapa elegida se conserva.
+Después de guardar, la tabla se vuelve a cargar y el campo de tiempo se vacía. La aplicación selecciona el siguiente piloto activo pendiente del mismo tramo. Si ya no queda ninguno, avanza al primer pendiente del tramo actual siguiente. Los retirados y descalificados no forman parte de este recorrido.
 
 La etapa sugerida al seleccionar una competición es la primera que tiene menos registros que participantes. Si todas están completas, se propone la última.
 
@@ -217,15 +217,60 @@ Ubicaciones:
 
 La base y sus tablas se crean automáticamente al abrir la aplicación por primera vez. Una base anterior se migra al esquema de estados y crea antes `datos.v1.backup.db`; los tiempos existentes pasan a **Finalizado** y los huecos a **Pendiente**.
 
-Para copiar o restaurar:
+### Copias automáticas
 
-1. cierra todas las ventanas de Rally Time Tracker;
-2. copia `datos.db` a una ubicación segura o sustituye el archivo por una copia anterior;
-3. vuelve a abrir la aplicación y comprueba una competición.
+La aplicación crea una copia consistente de SQLite:
 
-No sustituyas la base mientras la aplicación realiza una operación.
+- en cada arranque, después de abrir y validar la base;
+- antes de importar una competición válida;
+- antes de restaurar otra copia.
 
-## 15. CLI heredada
+Se conservan las 10 copias de arranque más recientes. Las copias manuales y preventivas no se eliminan automáticamente. Sus carpetas son:
+
+| Forma de ejecución | Carpeta de copias |
+| --- | --- |
+| `python src/main.py` | `<directorio de ejecución>/data/backups` |
+| `.exe` de PyInstaller | `%LOCALAPPDATA%\RallyTimeTracker\backups` |
+
+### Crear una copia manual
+
+1. Pulsa **Copias de seguridad** en el panel izquierdo.
+2. Selecciona **Crear copia ahora**.
+3. La nueva entrada aparece con el motivo **Manual**.
+
+El listado muestra fecha, motivo, tamaño y nombre de archivo. Las copias usan la API de backup de SQLite, por lo que no es necesario cerrar la aplicación.
+
+### Restaurar
+
+Puedes seleccionar una copia gestionada y pulsar **Restaurar seleccionada**, hacer doble clic sobre ella o usar **Restaurar otro archivo** para elegir un `.db` externo.
+
+Antes de sustituir los datos, la aplicación:
+
+1. valida la integridad SQLite, la versión del esquema, las tablas y las claves foráneas;
+2. solicita confirmación;
+3. crea una copia **Antes de restaurar** del estado actual;
+4. copia la base seleccionada a un archivo temporal validado;
+5. reemplaza `datos.db` de forma atómica y refresca la interfaz.
+
+Si el archivo está dañado o no es compatible, la base actual no se modifica. No reemplaces manualmente `datos.db` mientras la aplicación está abierta.
+
+## 15. Atajos de teclado
+
+Pulsa **Atajos**, junto a **Panel del tramo**, o `F1` para abrir la referencia dentro de la aplicación.
+
+| Tecla | Acción |
+| --- | --- |
+| `F1` | Mostrar la ayuda de atajos |
+| `F2` | Llevar el cursor al campo de tiempo y seleccionar su contenido |
+| `Enter` | Guardar cuando el cursor está en el campo de tiempo |
+| `Ctrl+Enter` | Guardar el resultado desde cualquier control de la ventana principal |
+| `Ctrl+↑` / `Ctrl+↓` | Seleccionar el piloto anterior o siguiente |
+| `Ctrl+←` / `Ctrl+→` | Seleccionar el tramo anterior o siguiente |
+| `Ctrl+P` | Abrir o traer al frente el panel del tramo |
+
+La selección de pilotos y tramos es circular: al superar el último vuelve al primero, y viceversa. Después de cambiar con `Ctrl` y las flechas, el foco vuelve al campo de tiempo para continuar escribiendo sin usar el ratón.
+
+## 16. CLI heredada
 
 La interfaz de consola usa la misma base y las mismas funciones de persistencia:
 
@@ -235,7 +280,7 @@ python src/cli_main.py
 
 Permite listar, crear y borrar competiciones, ver datos, añadir tiempos, rellenar abandonos y penalizar. Comparte con la GUI las validaciones de competiciones, etapas, participantes, tiempos y penalizaciones. Está orientada a Windows porque limpia la pantalla con `cls`; una opción de menú no numérica todavía puede cerrar el programa con un error. Para operación normal se recomienda la interfaz gráfica.
 
-## 16. Mensajes frecuentes
+## 17. Mensajes frecuentes
 
 | Mensaje | Acción recomendada |
 | --- | --- |

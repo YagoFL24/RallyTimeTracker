@@ -24,6 +24,9 @@ class RallyApp(tk.Tk):
         self.dashboard_tree = None
         self.dashboard_competition_name = None
         self._dashboard_rows_by_participant = {}
+        self.backup_window = None
+        self.backup_tree = None
+        self._backup_paths = {}
 
         self.title("Rally Time Tracker")
         self.geometry("1100x650")
@@ -31,6 +34,7 @@ class RallyApp(tk.Tk):
         self._configure_text_rendering()
 
         self._build_ui()
+        self._bind_keyboard_shortcuts()
         self._set_app_icon()
         self.apply_theme()
         self.current_leaderboard = []
@@ -44,6 +48,18 @@ class RallyApp(tk.Tk):
             )
             self.destroy()
             return
+        backup_ok, backup_message, _backup = self.service.create_database_backup(
+            "startup"
+        )
+        if backup_ok:
+            self.set_status("Copia automática de arranque creada.")
+        else:
+            self.set_status(backup_message, ok=False)
+            messagebox.showwarning(
+                "Copia de seguridad",
+                f"La aplicación continuará, pero no pudo crear la copia de arranque.\n\n{backup_message}",
+                parent=self,
+            )
         self.ready = True
 
     # Construye el layout principal.
@@ -126,6 +142,11 @@ class RallyApp(tk.Tk):
         ttk.Button(buttons, text="Guardar PDF", command=self.export_pdf_clicked).grid(
             row=1, column=2, sticky="ew", pady=(6, 0)
         )
+        ttk.Button(
+            buttons,
+            text="Copias de seguridad",
+            command=self.open_backup_manager,
+        ).grid(row=2, column=0, columnspan=3, sticky="ew", pady=(6, 0))
 
         self.theme_button = ttk.Button(panel, text="Modo oscuro", command=self.toggle_theme)
         self.theme_button.grid(row=3, column=0, sticky="ew", pady=(8, 0))
@@ -152,7 +173,12 @@ class RallyApp(tk.Tk):
             command=self.open_stage_dashboard,
             state="disabled",
         )
-        self.dashboard_button.grid(row=0, column=1, sticky="e")
+        self.dashboard_button.grid(row=0, column=1, sticky="e", padx=(0, 6))
+        ttk.Button(
+            header,
+            text="Atajos",
+            command=self.show_shortcuts_help,
+        ).grid(row=0, column=2, sticky="e")
 
         self.table_frame = ttk.Frame(panel)
         self.table_frame.grid(row=1, column=0, sticky="nsew", pady=8)
@@ -258,6 +284,10 @@ class RallyApp(tk.Tk):
         ttk.Button(frame, text="Guardar", command=self.add_time_clicked).grid(
             row=3, column=0, columnspan=2, sticky="ew", pady=(6, 0)
         )
+        ttk.Label(
+            frame,
+            text="F2 tiempo · Ctrl+↕ piloto · Ctrl+↔ tramo · Ctrl+Enter guardar",
+        ).grid(row=4, column=0, columnspan=2, sticky="w", pady=(5, 0))
 
     # Crea el formulario para rellenar abandonos.
     def _build_fill_missing(self, parent):
@@ -310,6 +340,89 @@ class RallyApp(tk.Tk):
     def set_status(self, message, ok=True):
         prefix = "OK" if ok else "Aviso"
         self.status_var.set(f"{prefix}: {message}")
+
+    # Registra los atajos de introducción rápida de resultados.
+    def _bind_keyboard_shortcuts(self):
+        self.bind("<F1>", self.show_shortcuts_help)
+        self.bind("<F2>", self._focus_time_shortcut)
+        self.bind("<Control-Return>", self._save_time_shortcut)
+        self.bind("<Control-Up>", self._previous_participant_shortcut)
+        self.bind("<Control-Down>", self._next_participant_shortcut)
+        self.bind("<Control-Left>", self._previous_stage_shortcut)
+        self.bind("<Control-Right>", self._next_stage_shortcut)
+        self.bind("<Control-p>", self._open_dashboard_shortcut)
+        self.add_time_entry.bind("<Return>", self._save_time_shortcut)
+
+    # Muestra una referencia accesible de todos los atajos disponibles.
+    def show_shortcuts_help(self, _event=None):
+        messagebox.showinfo(
+            "Atajos de teclado",
+            "F1\tMostrar esta ayuda\n"
+            "F2\tIr al campo de tiempo\n"
+            "Enter\tGuardar desde el campo de tiempo\n"
+            "Ctrl+Enter\tGuardar el resultado\n"
+            "Ctrl+↑ / Ctrl+↓\tPiloto anterior / siguiente\n"
+            "Ctrl+← / Ctrl+→\tTramo anterior / siguiente\n"
+            "Ctrl+P\tAbrir el panel del tramo",
+            parent=self,
+        )
+        return "break"
+
+    def _focus_time_shortcut(self, _event=None):
+        if not self.current_competition:
+            self.set_status("Seleccione una competicion.", ok=False)
+            return "break"
+        self.add_time_entry.focus_set()
+        self.add_time_entry.selection_range(0, tk.END)
+        return "break"
+
+    def _save_time_shortcut(self, _event=None):
+        self.add_time_clicked()
+        return "break"
+
+    @staticmethod
+    def _cycle_combobox(combo, step):
+        values = list(combo["values"])
+        if not values:
+            return None
+        current = combo.get()
+        try:
+            index = values.index(current)
+        except ValueError:
+            index = -1 if step > 0 else 0
+        selected = values[(index + step) % len(values)]
+        combo.set(selected)
+        return selected
+
+    def _cycle_result_participant(self, step):
+        if not self.current_competition:
+            self.set_status("Seleccione una competicion.", ok=False)
+            return "break"
+        self._cycle_combobox(self.add_participant_combo, step)
+        return self._focus_time_shortcut()
+
+    def _cycle_result_stage(self, step):
+        if not self.current_competition:
+            self.set_status("Seleccione una competicion.", ok=False)
+            return "break"
+        self._cycle_combobox(self.add_stage_combo, step)
+        return self._focus_time_shortcut()
+
+    def _previous_participant_shortcut(self, _event=None):
+        return self._cycle_result_participant(-1)
+
+    def _next_participant_shortcut(self, _event=None):
+        return self._cycle_result_participant(1)
+
+    def _previous_stage_shortcut(self, _event=None):
+        return self._cycle_result_stage(-1)
+
+    def _next_stage_shortcut(self, _event=None):
+        return self._cycle_result_stage(1)
+
+    def _open_dashboard_shortcut(self, _event=None):
+        self.open_stage_dashboard()
+        return "break"
 
     # Carga el icono de la aplicacion.
     def _set_app_icon(self):
@@ -421,6 +534,179 @@ class RallyApp(tk.Tk):
         self.set_status(message, ok=ok)
         if not ok:
             messagebox.showerror("Error al crear PDF", message, parent=self)
+
+    # Abre el gestor de copias locales y restauración.
+    def open_backup_manager(self):
+        if self.backup_window is not None and self.backup_window.winfo_exists():
+            self.backup_window.deiconify()
+            self.backup_window.lift()
+            self._refresh_backup_manager()
+            return
+
+        window = tk.Toplevel(self)
+        window.title("Copias de seguridad")
+        window.geometry("900x480")
+        window.minsize(720, 380)
+        window.transient(self)
+        window.columnconfigure(0, weight=1)
+        window.rowconfigure(1, weight=1)
+        window.protocol("WM_DELETE_WINDOW", self._close_backup_manager)
+        window.bind("<Destroy>", self._on_backup_manager_destroy)
+        self.backup_window = window
+
+        self.backup_directory_var = tk.StringVar()
+        ttk.Label(
+            window,
+            textvariable=self.backup_directory_var,
+            padding=(10, 10, 10, 6),
+        ).grid(row=0, column=0, sticky="ew")
+
+        table_frame = ttk.Frame(window, padding=(10, 0, 10, 8))
+        table_frame.grid(row=1, column=0, sticky="nsew")
+        table_frame.columnconfigure(0, weight=1)
+        table_frame.rowconfigure(0, weight=1)
+        columns = ("created", "reason", "size", "name")
+        self.backup_tree = ttk.Treeview(
+            table_frame, columns=columns, show="headings", selectmode="browse"
+        )
+        self.backup_tree.grid(row=0, column=0, sticky="nsew")
+        for column, heading, width in (
+            ("created", "Fecha", 160),
+            ("reason", "Motivo", 170),
+            ("size", "Tamaño", 100),
+            ("name", "Archivo", 390),
+        ):
+            self.backup_tree.heading(column, text=heading)
+            self.backup_tree.column(
+                column,
+                width=width,
+                anchor="w" if column in {"reason", "name"} else "center",
+            )
+        scrollbar = ttk.Scrollbar(
+            table_frame, orient="vertical", command=self.backup_tree.yview
+        )
+        scrollbar.grid(row=0, column=1, sticky="ns")
+        self.backup_tree.configure(yscrollcommand=scrollbar.set)
+        self.backup_tree.bind(
+            "<Double-1>", lambda _event: self._restore_selected_backup()
+        )
+
+        buttons = ttk.Frame(window, padding=(10, 0, 10, 10))
+        buttons.grid(row=2, column=0, sticky="ew")
+        for column in range(4):
+            buttons.columnconfigure(column, weight=1)
+        ttk.Button(
+            buttons, text="Crear copia ahora", command=self._create_manual_backup
+        ).grid(row=0, column=0, sticky="ew", padx=(0, 6))
+        ttk.Button(
+            buttons,
+            text="Restaurar seleccionada",
+            command=self._restore_selected_backup,
+        ).grid(row=0, column=1, sticky="ew", padx=(0, 6))
+        ttk.Button(
+            buttons,
+            text="Restaurar otro archivo",
+            command=self._restore_external_backup,
+        ).grid(row=0, column=2, sticky="ew", padx=(0, 6))
+        ttk.Button(
+            buttons, text="Cerrar", command=self._close_backup_manager
+        ).grid(row=0, column=3, sticky="ew")
+        self._refresh_backup_manager()
+
+    def _on_backup_manager_destroy(self, event):
+        if event.widget is self.backup_window:
+            self.backup_window = None
+            self.backup_tree = None
+            self._backup_paths = {}
+
+    def _close_backup_manager(self):
+        window = self.backup_window
+        self.backup_window = None
+        self.backup_tree = None
+        self._backup_paths = {}
+        if window is not None and window.winfo_exists():
+            window.destroy()
+
+    def _refresh_backup_manager(self):
+        if (
+            self.backup_window is None
+            or not self.backup_window.winfo_exists()
+            or self.backup_tree is None
+        ):
+            return
+        backups, directory, error = self.service.list_database_backups()
+        self.backup_directory_var.set(f"Ubicación: {directory}" if directory else "")
+        self.backup_tree.delete(*self.backup_tree.get_children())
+        self._backup_paths = {}
+        if error:
+            self.set_status(error, ok=False)
+            messagebox.showerror("Copias de seguridad", error, parent=self.backup_window)
+            return
+        for index, backup in enumerate(backups):
+            item_id = f"backup_{index}"
+            self._backup_paths[item_id] = backup["path"]
+            self.backup_tree.insert(
+                "",
+                tk.END,
+                iid=item_id,
+                values=(
+                    backup["created_at"].strftime("%d/%m/%Y %H:%M:%S"),
+                    backup["reason_label"],
+                    f"{backup['size'] / 1024:.1f} KB",
+                    backup["name"],
+                ),
+            )
+
+    def _create_manual_backup(self):
+        ok, message, _backup = self.service.create_database_backup("manual")
+        self.set_status(message, ok=ok)
+        if not ok:
+            messagebox.showerror(
+                "Copia de seguridad", message, parent=self.backup_window
+            )
+            return
+        self._refresh_backup_manager()
+
+    def _restore_selected_backup(self):
+        if self.backup_tree is None:
+            return
+        selection = self.backup_tree.selection()
+        if not selection:
+            self.set_status("Seleccione una copia de seguridad.", ok=False)
+            return
+        self._confirm_restore(self._backup_paths[selection[0]])
+
+    def _restore_external_backup(self):
+        source = filedialog.askopenfilename(
+            parent=self.backup_window or self,
+            title="Seleccionar base para restaurar",
+            filetypes=[("Base de datos SQLite", "*.db"), ("Todos los archivos", "*.*")],
+        )
+        if source:
+            self._confirm_restore(source)
+
+    def _confirm_restore(self, source):
+        if not messagebox.askyesno(
+            "Confirmar restauración",
+            "La base de datos actual será sustituida por la copia seleccionada.\n\n"
+            "Antes se creará automáticamente una copia preventiva. ¿Continuar?",
+            parent=self.backup_window or self,
+        ):
+            return
+        ok, message, _safety_backup = self.service.restore_database_backup(source)
+        self.set_status(message, ok=ok)
+        if not ok:
+            messagebox.showerror(
+                "Error de restauración", message, parent=self.backup_window or self
+            )
+            return
+        if self.dashboard_window is not None:
+            self._close_stage_dashboard()
+        self.refresh_competitions()
+        self._refresh_backup_manager()
+        messagebox.showinfo(
+            "Restauración completada", message, parent=self.backup_window or self
+        )
 
     # Limpia el estado y los controles cuando no hay competicion seleccionada.
     def _reset_competition_view(self):
@@ -916,9 +1202,41 @@ class RallyApp(tk.Tk):
         ok, msg = self.service.add_time_str(self.current_competition["name"], participant, int(stage), time_str)
         self.set_status(msg, ok=ok)
         if ok:
+            competition_name = self.current_competition["name"]
+            saved_stage = int(stage)
             self.add_time_var.set("")
             self.on_select_competition()
-            self.add_stage_combo.set(stage)
+            self._prepare_next_time_entry(
+                competition_name, participant, saved_stage
+            )
+
+    # Prepara el siguiente resultado pendiente después de guardar correctamente.
+    def _prepare_next_time_entry(
+        self, competition_name, saved_participant, saved_stage
+    ):
+        target_stage = saved_stage
+        next_participant = self.service.get_next_pending_participant(
+            competition_name, target_stage, saved_participant
+        )
+        if next_participant is None and self.current_competition:
+            target_stage = self.service.get_default_stage(
+                self.current_competition["id"],
+                self.current_competition["stages"],
+                self.current_competition["participants"],
+            )
+            next_participant = self.service.get_next_pending_participant(
+                competition_name, target_stage
+            )
+
+        self.add_stage_combo.set(str(target_stage))
+        self.status_stage_combo.set(str(target_stage))
+        if next_participant is not None:
+            self.add_participant_combo.set(next_participant)
+            self.status_participant_combo.set(next_participant)
+        else:
+            self.add_participant_combo.set(saved_participant)
+            self.status_participant_combo.set(saved_participant)
+        self._focus_time_shortcut()
 
     # Rellena abandonos en la etapa seleccionada.
     def fill_missing_clicked(self):
