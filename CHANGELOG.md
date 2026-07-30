@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.3.0 - 2026-07-30
+
+- Merge pull request #21 from YagoFL24/feat/campeonatos
+- feat: aÃ±adir gestiÃ³n de campeonatos
 ## v1.2.0 - 2026-07-29
 
 - Merge pull request #17 from YagoFL24/feat/v1.2.0
