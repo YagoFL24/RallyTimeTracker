@@ -50,6 +50,7 @@ La GUI sigue una separación ligera entre presentación, servicios y persistenci
 | `tests/test_intercambio.py` | Intercambio de datos | ida y vuelta CSV/Excel, colisiones y PDF |
 | `tests/test_copias_seguridad.py` | Backups | creación, rotación, validación, importación y restauración |
 | `tests/test_atajos_teclado.py` | Introducción rápida | recorrido de pendientes, cambio circular de controles y guardado por teclado |
+| `tests/test_campeonatos.py` | Campeonatos | migración v2, calendario, plantel, puntuación, desempates, bajas y exportación |
 
 Los imports de `src` son imports planos, no un paquete Python instalable. Por eso las entradas se ejecutan como archivos desde `src` y no mediante `python -m rally_time_tracker`.
 
@@ -62,6 +63,7 @@ Los imports de `src` son imports planos, no un paquete Python instalable. Por es
 - `current_leaderboard`: filas del ranking original;
 - `dark_mode` y `theme_colors`: estado visual;
 - `dashboard_window` y `dashboard_tree`: panel operativo opcional del tramo;
+- `championship_window`, `championship_tree` y selección actual: gestor opcional de campeonatos;
 - variables Tkinter de formularios y widgets.
 
 No existe caché de dominio. Después de una escritura correcta, la GUI consulta otra vez SQLite y reconstruye la tabla. Si una recarga ya no encuentra la competición seleccionada —por ejemplo, después de borrarla—, `_reset_competition_view` limpia la selección, la clasificación, la cabecera y los controles de acciones.
@@ -79,7 +81,11 @@ Cada participante tiene un estado general `active`, `retired` o `disqualified`. 
 
 El resultado conserva el tiempo anterior, un contador de revisiones y la fecha de actualización. Esto permite detectar modificaciones, aunque todavía no constituye un historial completo.
 
-## 5. Esquema SQLite v2
+Un campeonato tiene un plantel de pilotos globales, una tabla de puntos, un bonus por victorias de tramo y un calendario ordenado. Una competición puede pertenecer a varios campeonatos. La relación entre prueba y piloto conserva qué participante local representa al piloto oficial; los demás participantes son invitados y no intervienen en la puntuación.
+
+Los alias pertenecen al piloto global, no a una competición. La disponibilidad del piloto se expresa mediante un tramo de órdenes del calendario: alta inicial, retirada opcional y reincorporación opcional. Los puntos no se almacenan; se recalculan desde los resultados actuales para que cualquier corrección se refleje inmediatamente.
+
+## 5. Esquema SQLite v3
 
 `PRAGMA user_version` identifica el esquema. Las tablas de dominio usan claves primarias, claves foráneas con borrado en cascada, restricciones únicas, `CHECK`, índices y triggers de rango de tramo.
 
@@ -113,12 +119,32 @@ CREATE TABLE stage_results (
 );
 ```
 
+El esquema v3 añade estas entidades:
+
+| Tabla | Contenido |
+| --- | --- |
+| `drivers` | Identidad oficial reutilizable del piloto |
+| `driver_aliases` | Nombres alternativos únicos de cada piloto |
+| `championships` | Nombre, bonus y finalización manual |
+| `championship_points` | Puntos configurables por posición |
+| `championship_drivers` | Plantel y periodos de disponibilidad |
+| `championship_events` | Calendario ordenado y relación muchos a muchos con competiciones |
+| `championship_event_participants` | Asociación entre piloto oficial y participante local de cada prueba |
+
 Relación conceptual:
 
 ```mermaid
 erDiagram
     COMPETITIONS ||--o{ PARTICIPANTS : incluye
     PARTICIPANTS ||--o{ STAGE_RESULTS : obtiene
+    CHAMPIONSHIPS ||--o{ CHAMPIONSHIP_POINTS : configura
+    CHAMPIONSHIPS ||--o{ CHAMPIONSHIP_DRIVERS : inscribe
+    DRIVERS ||--o{ CHAMPIONSHIP_DRIVERS : participa
+    DRIVERS ||--o{ DRIVER_ALIASES : reconoce
+    CHAMPIONSHIPS ||--o{ CHAMPIONSHIP_EVENTS : ordena
+    COMPETITIONS ||--o{ CHAMPIONSHIP_EVENTS : reutiliza
+    CHAMPIONSHIP_EVENTS ||--o{ CHAMPIONSHIP_EVENT_PARTICIPANTS : asigna
+    PARTICIPANTS ||--o{ CHAMPIONSHIP_EVENT_PARTICIPANTS : representa
     COMPETITIONS {
         integer id PK
         text competition_name UK
@@ -137,9 +163,21 @@ erDiagram
         text status
         integer time_ms
     }
+    CHAMPIONSHIPS {
+        integer id PK
+        text championship_name UK
+        integer stage_win_bonus
+        integer manually_finalized
+    }
+    DRIVERS {
+        integer id PK
+        text official_name UK
+    }
 ```
 
-Antes de migrar una base histórica se crea `datos.v1.backup.db`. Los tiempos válidos pasan a `finished`, se consolidan duplicados conservando el último y se generan filas `pending` para el resto de combinaciones participante/tramo. Las incompatibilidades quedan en `schema_migration_log`.
+Antes de migrar una base histórica v1 se crea `datos.v1.backup.db`. Los tiempos válidos pasan a `finished`, se consolidan duplicados conservando el último y se generan filas `pending` para el resto de combinaciones participante/tramo. Las incompatibilidades quedan en `schema_migration_log`.
+
+La migración v2 a v3 crea `datos.v2.backup.db`, añade las tablas de campeonatos dentro de una transacción y conserva sin cambios competiciones, participantes, estados y resultados. La verificación posterior exige todos los objetos del esquema v3.
 
 ## 6. Ubicación e inicialización
 
@@ -192,7 +230,7 @@ Las operaciones de abandonos y penalizaciones utilizan el mismo límite de valid
 
 ### Eliminar competición
 
-`delete_competition` borra la competición y SQLite elimina participantes y resultados mediante `ON DELETE CASCADE`.
+`delete_competition` comprueba primero `get_competition_championships`. Si existe algún vínculo, rechaza el borrado e informa de los campeonatos afectados. En caso contrario, SQLite elimina participantes y resultados mediante `ON DELETE CASCADE`.
 
 ### Exportar e importar
 
@@ -222,11 +260,23 @@ La copia de arranque se solicita desde `RallyApp` después de cargar la base. `R
 
 Después de una escritura correcta, `RallyService.get_next_pending_participant` recorre el orden de alta desde el piloto guardado y devuelve el siguiente participante activo cuyo resultado continúa pendiente. Si no queda ninguno en ese tramo, la GUI consulta `get_default_stage` e intenta el primer pendiente del nuevo tramo. Esta selección no modifica la base de datos.
 
+### Gestionar un campeonato
+
+`RallyService.create_championship` normaliza el nombre y el plantel, crea o reutiliza identidades globales y guarda la tabla de puntos en una transacción. Al añadir una competición existente, `_resolve_championship_mappings` exige una asociación única para cada piloto activo; los participantes sin asociación quedan como invitados. Al crearla desde el campeonato, el servicio copia automáticamente el plantel activo.
+
+El orden del calendario se persiste con enteros consecutivos y puede cambiar sin alterar las competiciones. Retirar una prueba o eliminar el campeonato crea primero una copia `pre_championship`; la competición nunca se borra por cascada. La finalización automática se calcula desde los resultados locales y la marca manual impide añadir nuevas pruebas.
+
+`get_championship_info` reconstruye calendario, resultados y clasificación en cada consulta. `intercambio.py` consume esa misma proyección para generar CSV, un libro Excel con tres hojas y PDF, evitando una segunda implementación de las reglas de puntuación.
+
 ## 8. Cálculo de clasificación
 
 `RallyService._build_leaderboard` recibe los resultados con su número real de tramo, por lo que conserva huecos. Ordena participantes activos, retirados y descalificados, en ese orden. Dentro de cada grupo prioriza más tramos con tiempo —`finished` o `stage_dnf`— y después menor tiempo acumulado.
 
 Los descalificados permanecen al final con rango textual `DSQ` y sin diferencia. Sus resultados con tiempo se conservan y los huecos se proyectan como `dsq` únicamente para la presentación. Para bases creadas antes de esta regla, un tiempo desplazado a `previous_time_ms` por la descalificación se recupera en la vista. Las diferencias provisionales solo comparan participantes no descalificados del mismo grupo y con el mismo progreso.
+
+La clasificación de campeonato solo suma pruebas finalizadas. Excluye invitados, no presentados y descalificados antes de asignar puntos. Un empate de rally comparte posición y salta la siguiente; un retirado sí conserva su clasificación. El bonus se concede a todos los pilotos válidos empatados con más victorias de tramo, contando también empates exactos, y se reasigna si el máximo está descalificado.
+
+El orden general usa puntos, victorias, segundos puestos, terceros puestos y el mejor resultado más reciente. Las bajas solo controlan en qué órdenes del calendario se espera al piloto: no alteran sus puntos históricos.
 
 ## 9. Presentación
 

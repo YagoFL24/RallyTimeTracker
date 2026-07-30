@@ -499,3 +499,178 @@ def export_pdf(competition, destination):
         )
         story.append(table)
     document.build(story)
+
+
+def _championship_headers(championship, event_indexes):
+    return [
+        "Pos",
+        "Piloto",
+        "Estado",
+        "Puntos",
+        "Diferencia",
+        "Victorias",
+        "Podios",
+        "Tramos ganados",
+        "Abandonos",
+    ] + [championship["events"][index]["competition_name"] for index in event_indexes]
+
+
+def _championship_row(row, event_indexes):
+    event_points = []
+    for index in event_indexes:
+        result = row["event_results"][index]
+        event_points.append("-" if result is None else result["total_points"])
+    return [
+        row["rank"],
+        row["driver"],
+        "Activo" if row["status"] == "active" else "Retirado",
+        row["points"],
+        row["difference"],
+        row["wins"],
+        row["podiums"],
+        row["stage_wins"],
+        row["retirements"],
+        *event_points,
+    ]
+
+
+def export_championship_data(championship, destination):
+    path = Path(destination)
+    suffix = path.suffix.casefold()
+    if suffix == ".csv":
+        _write_championship_csv(path, championship)
+    elif suffix == ".xlsx":
+        _write_championship_excel(path, championship)
+    else:
+        raise ExchangeError("El campeonato debe exportarse como .csv o .xlsx.")
+
+
+def _write_championship_csv(path, championship):
+    event_indexes = list(range(len(championship["events"])))
+    try:
+        with path.open("w", encoding="utf-8-sig", newline="") as handle:
+            writer = csv.writer(handle, delimiter=";", lineterminator="\n")
+            writer.writerow(_championship_headers(championship, event_indexes))
+            for row in championship["standings"]:
+                writer.writerow(
+                    [_csv_safe(value) for value in _championship_row(row, event_indexes)]
+                )
+    except OSError as exc:
+        raise ExchangeError(f"No se pudo escribir el CSV: {exc}") from exc
+
+
+def _write_championship_excel(path, championship):
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Alignment, Font, PatternFill
+    except ImportError as exc:
+        raise ExchangeError("Falta la dependencia openpyxl para crear Excel.") from exc
+    workbook = Workbook()
+    standings_sheet = workbook.active
+    standings_sheet.title = "Clasificacion"
+    event_indexes = list(range(len(championship["events"])))
+    standings_sheet.append(_championship_headers(championship, event_indexes))
+    for row in championship["standings"]:
+        standings_sheet.append(_championship_row(row, event_indexes))
+
+    calendar_sheet = workbook.create_sheet("Calendario")
+    calendar_sheet.append(["Orden", "Competicion", "Fecha", "Estado"])
+    for event in championship["events"]:
+        calendar_sheet.append(
+            [
+                event["event_order"],
+                _csv_safe(event["competition_name"]),
+                event["event_date"] or "",
+                event["status"],
+            ]
+        )
+
+    points_sheet = workbook.create_sheet("Puntuacion")
+    points_sheet.append(["Posicion", "Puntos"])
+    for position, points in enumerate(championship["points_table"], start=1):
+        points_sheet.append([position, points])
+    points_sheet.append([])
+    points_sheet.append(["Bonificacion por victorias de tramo", championship["stage_win_bonus"]])
+
+    header_fill = PatternFill("solid", fgColor="0E639C")
+    for sheet in workbook.worksheets:
+        for cell in sheet[1]:
+            cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal="center")
+        sheet.freeze_panes = "A2"
+        for column in sheet.columns:
+            width = min(max(len(str(cell.value or "")) for cell in column) + 2, 45)
+            sheet.column_dimensions[column[0].column_letter].width = width
+    try:
+        workbook.save(path)
+    except OSError as exc:
+        raise ExchangeError(f"No se pudo escribir el Excel: {exc}") from exc
+
+
+def export_championship_pdf(championship, destination):
+    try:
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.lib.styles import getSampleStyleSheet
+        from reportlab.lib.units import mm
+        from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+    except ImportError as exc:
+        raise ExchangeError("Falta la dependencia reportlab para crear PDF.") from exc
+    path = Path(destination)
+    if path.suffix.casefold() != ".pdf":
+        raise ExchangeError("La clasificacion del campeonato debe guardarse como PDF.")
+    document = SimpleDocTemplate(
+        str(path),
+        pagesize=landscape(A4),
+        leftMargin=9 * mm,
+        rightMargin=9 * mm,
+        topMargin=10 * mm,
+        bottomMargin=10 * mm,
+        title=f"Campeonato - {championship['name']}",
+    )
+    styles = getSampleStyleSheet()
+    story = [
+        Paragraph(f"Campeonato — {escape(championship['name'])}", styles["Title"]),
+        Paragraph(
+            f"Estado: {championship['status']} · Bonificación por tramos: "
+            f"{championship['stage_win_bonus']} puntos",
+            styles["Normal"],
+        ),
+        Spacer(1, 4 * mm),
+    ]
+    chunks = [
+        list(range(start, min(start + 5, len(championship["events"]))))
+        for start in range(0, len(championship["events"]), 5)
+    ] or [[]]
+    for chunk_number, event_indexes in enumerate(chunks):
+        if chunk_number:
+            story.append(PageBreak())
+            story.append(
+                Paragraph(
+                    f"Campeonato — {escape(championship['name'])}",
+                    styles["Heading1"],
+                )
+            )
+        rows = [_championship_headers(championship, event_indexes)]
+        rows.extend(
+            _championship_row(row, event_indexes)
+            for row in championship["standings"]
+        )
+        table = Table(rows, repeatRows=1)
+        table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0E639C")),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("FONTSIZE", (0, 0), (-1, -1), 7),
+                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                    ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
+                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#EAF2F8")]),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ]
+            )
+        )
+        story.append(table)
+    document.build(story)

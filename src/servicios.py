@@ -1,3 +1,4 @@
+from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
 from copias_seguridad import (
@@ -14,30 +15,48 @@ from gestorTiempos import (
 )
 from intercambio import (
     ExchangeError,
+    export_championship_data as write_championship_export,
+    export_championship_pdf as write_championship_pdf,
     export_data as write_export_file,
     export_pdf as write_classification_pdf,
     read_data as read_import_file,
 )
 from persistencia import (
+    add_championship_event,
     add_competition,
+    add_driver_alias,
     add_time,
+    create_championship as persist_championship,
+    delete_championship as persist_delete_championship,
     delete_competition,
     fill_times,
     fill_times_penalitation,
+    get_championship,
+    get_championship_drivers,
+    get_championship_events,
+    get_championship_points,
+    get_championships,
     get_competition,
+    get_competition_championships,
     get_competitions,
     get_participants,
     get_participant_records,
     get_stage_results,
     import_competition_snapshot,
+    move_championship_event,
     reactivate_participant,
+    remove_championship_event,
     retire_participant,
+    set_championship_driver_availability,
     set_stage_status,
+    update_championship_settings,
+    update_competition_date,
 )
 
 
 class RallyService:
     MAX_NAME_LENGTH = 255
+    DEFAULT_CHAMPIONSHIP_POINTS = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1]
     STATUS_LABELS = {
         "pending": "Pendiente",
         "finished": "Finalizado",
@@ -50,6 +69,516 @@ class RallyService:
     # Devuelve nombres de competiciones disponibles.
     def list_competitions(self):
         return [c[0] for c in get_competitions()]
+
+    # Devuelve nombres de campeonatos disponibles.
+    def list_championships(self):
+        return [row["championship_name"] for row in get_championships()]
+
+    # Crea un campeonato, sus pilotos globales y la tabla de puntuación.
+    def create_championship(
+        self, name, drivers, position_points=None, stage_win_bonus=5
+    ):
+        if not isinstance(name, str) or not name.strip():
+            return False, "El nombre del campeonato no puede estar vacio."
+        name = name.strip()
+        if len(name) > self.MAX_NAME_LENGTH:
+            return False, f"El nombre no puede superar {self.MAX_NAME_LENGTH} caracteres."
+        if get_championship(name) is not None:
+            return False, "Ya existe un campeonato con ese nombre."
+        normalized_drivers, error = self._normalize_championship_drivers(drivers)
+        if error:
+            return False, error
+        points, error = self._normalize_championship_points(position_points)
+        if error:
+            return False, error
+        if not self._is_strict_int(stage_win_bonus) or stage_win_bonus < 0:
+            return False, "La bonificacion por tramos debe ser un entero no negativo."
+        if not persist_championship(
+            name, normalized_drivers, points, stage_win_bonus
+        ):
+            return False, "No se pudo crear el campeonato."
+        return True, "Campeonato creado."
+
+    def _normalize_championship_drivers(self, drivers):
+        if not isinstance(drivers, (list, tuple)) or not drivers:
+            return None, "Debe indicar al menos un piloto."
+        normalized = []
+        keys = set()
+        for driver in drivers:
+            if not isinstance(driver, str) or not driver.strip():
+                return None, "Los pilotos no pueden estar vacios."
+            driver = driver.strip()
+            if len(driver) > self.MAX_NAME_LENGTH:
+                return None, (
+                    f"El nombre de un piloto no puede superar "
+                    f"{self.MAX_NAME_LENGTH} caracteres."
+                )
+            if driver.casefold() in keys:
+                return None, "Los pilotos del campeonato no pueden repetirse."
+            keys.add(driver.casefold())
+            normalized.append(driver)
+        return normalized, None
+
+    def _normalize_championship_points(self, position_points):
+        if position_points is None:
+            return list(self.DEFAULT_CHAMPIONSHIP_POINTS), None
+        if not isinstance(position_points, (list, tuple)) or not position_points:
+            return None, "Debe indicar al menos una posicion puntuable."
+        points = []
+        for value in position_points:
+            if not self._is_strict_int(value) or value < 0:
+                return None, "Todos los puntos deben ser enteros no negativos."
+            if value > MAX_SQLITE_INTEGER:
+                return None, "La tabla de puntos contiene un valor demasiado grande."
+            points.append(value)
+        return points, None
+
+    # Carga calendario, resultados y clasificación recalculada de un campeonato.
+    def get_championship_info(self, championship_name):
+        championship = get_championship(championship_name)
+        if championship is None:
+            return None
+        championship_id = championship["id"]
+        drivers = get_championship_drivers(championship_id)
+        points = get_championship_points(championship_id)
+        events = get_championship_events(championship_id)
+        for event in events:
+            competition = self.get_competition_info(event["competition_name"])
+            event["competition"] = competition
+            event["status"] = self._championship_event_status(competition)
+            event["results"] = self._build_championship_event_results(
+                competition,
+                event["driver_mappings"],
+                drivers,
+                points,
+                championship["stage_win_bonus"],
+                event["status"] == "Finalizada",
+            )
+        if championship["manually_finalized"]:
+            status = "Finalizado"
+        elif events and all(event["status"] == "Finalizada" for event in events):
+            status = "Finalizado"
+        elif any(event["status"] != "Planificada" for event in events):
+            status = "En curso"
+        else:
+            status = "Planificado"
+        return {
+            **championship,
+            "name": championship["championship_name"],
+            "status": status,
+            "drivers": drivers,
+            "points_table": points,
+            "events": events,
+            "standings": self._build_championship_standings(drivers, events),
+        }
+
+    @staticmethod
+    def _championship_event_status(competition):
+        if competition is None:
+            return "Planificada"
+        started = any(row["status"] != "pending" for row in competition["results"])
+        if not started:
+            return "Planificada"
+        active_names = {
+            row["participant_name"]
+            for row in competition["participant_records"]
+            if row["rally_status"] == "active"
+        }
+        has_pending = any(
+            row["participant_name"] in active_names and row["status"] == "pending"
+            for row in competition["results"]
+        )
+        return "En curso" if has_pending else "Finalizada"
+
+    def _build_championship_event_results(
+        self, competition, mappings, drivers, points, stage_win_bonus, award_points
+    ):
+        if competition is None:
+            return {}
+        driver_by_id = {row["id"]: row for row in drivers}
+        leaderboard = {
+            row["participant"]: row for row in competition["leaderboard"]
+        }
+        mapped = []
+        for mapping in mappings:
+            if not mapping["participates"] or mapping["participant_name"] is None:
+                continue
+            row = leaderboard.get(mapping["participant_name"])
+            if row is None or mapping["driver_id"] not in driver_by_id:
+                continue
+            mapped.append((mapping, row))
+
+        valid = [
+            item
+            for item in mapped
+            if item[1]["rally_status"] != "disqualified"
+            and item[1]["classification_status"] != "No presentado"
+        ]
+        valid.sort(
+            key=lambda item: (
+                0 if item[1]["rally_status"] == "active" else 1,
+                -item[1]["completed_stages"],
+                item[1]["total"],
+                driver_by_id[item[0]["driver_id"]]["official_name"].casefold(),
+            )
+        )
+        positions = {}
+        previous_key = None
+        position = None
+        for index, (mapping, row) in enumerate(valid, start=1):
+            result_key = (
+                0 if row["rally_status"] == "active" else 1,
+                row["completed_stages"],
+                row["total"],
+            )
+            if result_key != previous_key:
+                position = index
+                previous_key = result_key
+            positions[mapping["driver_id"]] = position
+
+        stage_wins = {mapping["driver_id"]: 0 for mapping, _row in valid}
+        for stage_index in range(competition["stages"]):
+            finishers = []
+            for mapping, row in valid:
+                result = row["stage_results"][stage_index]
+                if result["status"] == "finished" and result["time_ms"] is not None:
+                    finishers.append((mapping["driver_id"], result["time_ms"]))
+            if finishers:
+                best = min(time_ms for _driver_id, time_ms in finishers)
+                for driver_id, time_ms in finishers:
+                    if time_ms == best:
+                        stage_wins[driver_id] += 1
+        maximum_wins = max(stage_wins.values(), default=0)
+        bonus_winners = {
+            driver_id
+            for driver_id, wins in stage_wins.items()
+            if maximum_wins > 0 and wins == maximum_wins
+        }
+
+        results = {}
+        for mapping, row in mapped:
+            driver_id = mapping["driver_id"]
+            position = positions.get(driver_id)
+            base_points = (
+                points[position - 1]
+                if award_points and position is not None and position <= len(points)
+                else 0
+            )
+            bonus = (
+                stage_win_bonus
+                if award_points and driver_id in bonus_winners
+                else 0
+            )
+            results[driver_id] = {
+                "position": position,
+                "points": base_points,
+                "bonus": bonus,
+                "total_points": base_points + bonus,
+                "stage_wins": stage_wins.get(driver_id, 0),
+                "rally_status": row["rally_status"],
+                "classification_status": row["classification_status"],
+                "participant": mapping["participant_name"],
+                "awarded": award_points,
+            }
+        return results
+
+    @staticmethod
+    def _build_championship_standings(drivers, events):
+        rows = []
+        for driver in drivers:
+            event_results = []
+            position_counts = {}
+            total_points = 0
+            stage_wins = 0
+            retirements = 0
+            for event in events:
+                result = event["results"].get(driver["id"])
+                event_results.append(result)
+                if result is None:
+                    continue
+                total_points += result["total_points"]
+                stage_wins += result["stage_wins"]
+                if result["position"] is not None:
+                    position_counts[result["position"]] = (
+                        position_counts.get(result["position"], 0) + 1
+                    )
+                if result["rally_status"] == "retired":
+                    retirements += 1
+            recent_results = tuple(
+                result["position"] if result and result["position"] is not None else 10**9
+                for result in reversed(event_results)
+            )
+            tie_key = (
+                -total_points,
+                -position_counts.get(1, 0),
+                -position_counts.get(2, 0),
+                -position_counts.get(3, 0),
+                recent_results,
+            )
+            rows.append(
+                {
+                    "driver_id": driver["id"],
+                    "driver": driver["official_name"],
+                    "status": driver["status"],
+                    "points": total_points,
+                    "difference": 0,
+                    "wins": position_counts.get(1, 0),
+                    "seconds": position_counts.get(2, 0),
+                    "thirds": position_counts.get(3, 0),
+                    "podiums": sum(
+                        position_counts.get(position, 0) for position in (1, 2, 3)
+                    ),
+                    "stage_wins": stage_wins,
+                    "retirements": retirements,
+                    "event_results": event_results,
+                    "_tie_key": tie_key,
+                }
+            )
+        rows.sort(key=lambda row: (row["_tie_key"], row["driver"].casefold()))
+        leader_points = rows[0]["points"] if rows else 0
+        previous_key = None
+        rank = 0
+        for index, row in enumerate(rows, start=1):
+            if row["_tie_key"] != previous_key:
+                rank = index
+                previous_key = row["_tie_key"]
+            row["rank"] = rank
+            row["difference"] = leader_points - row["points"]
+            row.pop("_tie_key")
+        return rows
+
+    # Asocia una competición existente y recuerda las correspondencias de pilotos.
+    def add_competition_to_championship(
+        self, championship_name, competition_name, explicit_mappings=None
+    ):
+        championship = self.get_championship_info(championship_name)
+        if championship is None:
+            return False, "No existe ese campeonato."
+        if championship["manually_finalized"]:
+            return False, "El campeonato esta finalizado."
+        competition = self.get_competition_info(competition_name)
+        if competition is None:
+            return False, "No existe esa competicion."
+        if any(
+            event["competition_name"].casefold() == competition["name"].casefold()
+            for event in championship["events"]
+        ):
+            return False, "La competicion ya pertenece al campeonato."
+        mappings, aliases, missing = self._resolve_championship_mappings(
+            championship["drivers"], competition, explicit_mappings
+        )
+        if missing:
+            return False, "Falta asociar: " + ", ".join(missing) + "."
+        for driver_id, alias in aliases:
+            if not add_driver_alias(driver_id, alias):
+                return False, f"El alias '{alias}' ya pertenece a otro piloto."
+        if not add_championship_event(
+            championship["id"], competition["id"], mappings
+        ):
+            return False, "No se pudo añadir la competicion al campeonato."
+        return True, "Competicion añadida al campeonato."
+
+    @staticmethod
+    def _resolve_championship_mappings(drivers, competition, explicit_mappings=None):
+        explicit_mappings = explicit_mappings or {}
+        participant_by_key = {
+            row["participant_name"].casefold(): row
+            for row in competition["participant_records"]
+        }
+        mappings = {}
+        aliases = []
+        missing = []
+        used_participants = set()
+        for driver in drivers:
+            if driver["status"] != "active":
+                continue
+            requested = explicit_mappings.get(driver["official_name"])
+            participant = None
+            if isinstance(requested, str) and requested.strip():
+                participant = participant_by_key.get(requested.strip().casefold())
+            if participant is None:
+                for candidate in [driver["official_name"], *driver["aliases"]]:
+                    participant = participant_by_key.get(candidate.casefold())
+                    if participant is not None:
+                        break
+            if participant is None or participant["id"] in used_participants:
+                missing.append(driver["official_name"])
+                continue
+            mappings[driver["id"]] = participant["id"]
+            used_participants.add(participant["id"])
+            if participant["participant_name"].casefold() not in {
+                alias.casefold() for alias in driver["aliases"]
+            }:
+                aliases.append((driver["id"], participant["participant_name"]))
+        return mappings, aliases, missing
+
+    # Crea una competición con el roster activo y la incorpora al calendario.
+    def create_competition_for_championship(
+        self, championship_name, competition_name, stages, event_date=None
+    ):
+        championship = self.get_championship_info(championship_name)
+        if championship is None:
+            return False, "No existe ese campeonato."
+        if championship["manually_finalized"]:
+            return False, "El campeonato esta finalizado."
+        active_drivers = [
+            row["official_name"]
+            for row in championship["drivers"]
+            if row["status"] == "active"
+        ]
+        if not active_drivers:
+            return False, "No hay pilotos activos para crear la competicion."
+        ok, message = self.create_competition(
+            competition_name, stages, active_drivers, event_date
+        )
+        if not ok:
+            return False, message
+        ok, message = self.add_competition_to_championship(
+            championship_name, competition_name
+        )
+        if not ok:
+            delete_competition(competition_name)
+            return False, message
+        return True, "Competicion creada y añadida al campeonato."
+
+    # Quita una prueba del calendario sin borrar su competición.
+    def remove_competition_from_championship(self, championship_name, event_id):
+        championship = self.get_championship_info(championship_name)
+        if championship is None:
+            return False, "No existe ese campeonato."
+        if not self._is_strict_int(event_id):
+            return False, "Prueba no valida."
+        try:
+            create_backup("pre_championship")
+        except BackupError as exc:
+            return False, f"No se pudo crear la copia previa: {exc}"
+        if not remove_championship_event(championship["id"], event_id):
+            return False, "No se pudo retirar la prueba del campeonato."
+        return True, "Prueba retirada; la competicion original se conserva."
+
+    def move_competition_in_championship(
+        self, championship_name, event_id, direction
+    ):
+        championship = get_championship(championship_name)
+        if championship is None:
+            return False, "No existe ese campeonato."
+        if not move_championship_event(championship["id"], event_id, direction):
+            return False, "La prueba ya esta en el limite del calendario."
+        return True, "Calendario reordenado."
+
+    # Retira o reincorpora un piloto desde una prueba concreta.
+    def set_championship_driver_active(
+        self,
+        championship_name,
+        driver_name,
+        from_order,
+        active,
+        explicit_mappings=None,
+    ):
+        championship = self.get_championship_info(championship_name)
+        if championship is None:
+            return False, "No existe ese campeonato."
+        driver = next(
+            (
+                row
+                for row in championship["drivers"]
+                if row["official_name"].casefold() == str(driver_name).casefold()
+            ),
+            None,
+        )
+        if driver is None:
+            return False, "El piloto no pertenece al campeonato."
+        if not self._is_strict_int(from_order) or from_order <= 0:
+            return False, "La prueba inicial no es valida."
+        if not isinstance(active, bool):
+            return False, "El estado del piloto no es valido."
+        event_mappings = {}
+        if active:
+            explicit_mappings = explicit_mappings or {}
+            missing = []
+            for event in championship["events"]:
+                if event["event_order"] < from_order:
+                    continue
+                competition = event["competition"]
+                requested = explicit_mappings.get(event["competition_name"])
+                mappings, aliases, unresolved = self._resolve_championship_mappings(
+                    [{**driver, "status": "active"}],
+                    competition,
+                    {driver["official_name"]: requested} if requested else None,
+                )
+                if unresolved:
+                    missing.append(event["competition_name"])
+                    continue
+                event_mappings[event["id"]] = mappings[driver["id"]]
+                for driver_id, alias in aliases:
+                    if not add_driver_alias(driver_id, alias):
+                        return False, f"El alias '{alias}' ya pertenece a otro piloto."
+            if missing:
+                return False, "Falta asociar al piloto en: " + ", ".join(missing) + "."
+        if not set_championship_driver_availability(
+            championship["id"], driver["id"], from_order, active, event_mappings
+        ):
+            return False, "No se pudo actualizar la participacion del piloto."
+        return (
+            True,
+            "Piloto reincorporado al campeonato."
+            if active
+            else "Piloto retirado del campeonato.",
+        )
+
+    # Reemplaza tabla de puntos, bonificación y cierre manual.
+    def configure_championship(
+        self,
+        championship_name,
+        position_points,
+        stage_win_bonus,
+        manually_finalized=None,
+    ):
+        championship = get_championship(championship_name)
+        if championship is None:
+            return False, "No existe ese campeonato."
+        points, error = self._normalize_championship_points(position_points)
+        if error:
+            return False, error
+        if not self._is_strict_int(stage_win_bonus) or stage_win_bonus < 0:
+            return False, "La bonificacion por tramos debe ser un entero no negativo."
+        if not update_championship_settings(
+            championship["id"], points, stage_win_bonus, manually_finalized
+        ):
+            return False, "No se pudo actualizar el campeonato."
+        return True, "Configuracion actualizada y clasificacion recalculada."
+
+    def delete_championship(self, championship_name):
+        championship = get_championship(championship_name)
+        if championship is None:
+            return False, "No existe ese campeonato."
+        try:
+            create_backup("pre_championship")
+        except BackupError as exc:
+            return False, f"No se pudo crear la copia previa: {exc}"
+        if not persist_delete_championship(championship["id"]):
+            return False, "No se pudo borrar el campeonato."
+        return True, "Campeonato borrado; sus competiciones se conservan."
+
+    def export_championship(self, championship_name, destination):
+        championship = self.get_championship_info(championship_name)
+        if championship is None:
+            return False, "No existe ese campeonato."
+        try:
+            write_championship_export(championship, destination)
+        except (ExchangeError, OSError) as exc:
+            return False, f"No se pudo exportar el campeonato: {exc}"
+        return True, "Campeonato exportado correctamente."
+
+    def export_championship_pdf(self, championship_name, destination):
+        championship = self.get_championship_info(championship_name)
+        if championship is None:
+            return False, "No existe ese campeonato."
+        try:
+            write_championship_pdf(championship, destination)
+        except (ExchangeError, OSError) as exc:
+            return False, f"No se pudo crear el PDF del campeonato: {exc}"
+        return True, "PDF del campeonato guardado correctamente."
 
     # Carga datos completos de una competicion para la UI.
     def get_competition_info(self, competition_name):
@@ -257,7 +786,7 @@ class RallyService:
             number += 1
 
     # Valida y crea una competicion con participantes.
-    def create_competition(self, name, stages, participants):
+    def create_competition(self, name, stages, participants, event_date=None):
         if not isinstance(name, str):
             return False, "El nombre no puede estar vacio."
         name = name.strip()
@@ -273,6 +802,9 @@ class RallyService:
             return False, "El numero de etapas debe ser mayor que cero."
         if not isinstance(participants, (list, tuple)) or not participants:
             return False, "Debe indicar al menos un participante."
+        event_date, error = self._normalize_event_date(event_date)
+        if error:
+            return False, error
 
         normalized_participants = []
         participant_keys = set()
@@ -291,12 +823,43 @@ class RallyService:
             participant_keys.add(participant_key)
             normalized_participants.append(participant)
 
-        if not add_competition(name, stages, normalized_participants):
+        if not add_competition(
+            name, stages, normalized_participants, event_date=event_date
+        ):
             return False, "No se pudo crear la competicion."
         return True, "Competicion creada."
 
+    @staticmethod
+    def _normalize_event_date(event_date):
+        if event_date is None or not str(event_date).strip():
+            return None, None
+        event_date = str(event_date).strip()
+        try:
+            datetime.strptime(event_date, "%Y-%m-%d")
+        except ValueError:
+            return None, "La fecha debe usar el formato AAAA-MM-DD."
+        return event_date, None
+
+    def set_competition_date(self, competition_name, event_date):
+        competition = get_competition(competition_name)
+        if competition is None:
+            return False, "No existe esa competicion."
+        event_date, error = self._normalize_event_date(event_date)
+        if error:
+            return False, error
+        if not update_competition_date(competition[1], event_date):
+            return False, "No se pudo actualizar la fecha."
+        return True, "Fecha actualizada."
+
     # Borra una competicion y sus datos asociados.
     def delete_competition(self, name):
+        linked = get_competition_championships(name)
+        if linked:
+            return False, (
+                "La competicion pertenece a: "
+                + ", ".join(linked)
+                + ". Retirela de esos campeonatos antes de borrarla."
+            )
         ok = delete_competition(name)
         if not ok:
             return False, "No existe esa competicion."
