@@ -146,7 +146,7 @@ def _write_excel(path, competition):
     classification_headers = (
         ["Pos", "Piloto", "Estado"]
         + [f"Tramo {stage}" for stage in range(1, competition["stages"] + 1)]
-        + ["General", "Dif."]
+        + ["Tramos ganados", "General", "Dif."]
     )
     classification.append(classification_headers)
     for row in competition["leaderboard"]:
@@ -159,6 +159,7 @@ def _write_excel(path, competition):
                 row["participant"],
                 row["classification_status"],
                 *[_format_stage_result(result) for result in row["stage_results"]],
+                row["stage_wins"],
                 _display_time(row["total"]),
                 difference,
             ]
@@ -463,24 +464,24 @@ def export_pdf(competition, destination):
         if chunk_index:
             story.append(PageBreak())
             story.append(Paragraph(f"Clasificación — {escape(competition['name'])}", styles["Heading1"]))
-        headers = ["Pos", "Piloto", "Estado"] + [f"T{stage}" for stage in stage_numbers] + ["General", "Dif."]
+        headers = ["Pos", "Piloto", "Estado"] + [f"T{stage}" for stage in stage_numbers] + ["Tramos ganados", "General", "Dif."]
         table_rows = [headers]
         for row in competition["leaderboard"]:
             difference = "-" if row["diff"] in (None, 0) else f"+{_display_time(row['diff'])}"
             table_rows.append(
                 [row["rank"], row["participant"], row["classification_status"]]
                 + [_format_stage_result(row["stage_results"][stage - 1]) for stage in stage_numbers]
-                + [_display_time(row["total"]), difference]
+                + [row["stage_wins"], _display_time(row["total"]), difference]
             )
         available_width = landscape(A4)[0] - 20 * mm
-        fixed_width = 25 * mm + 45 * mm + 30 * mm + 25 * mm + 25 * mm
+        fixed_width = 10 * mm + 45 * mm + 30 * mm + 25 * mm + 25 * mm + 25 * mm
         stage_width = (available_width - fixed_width) / max(len(stage_numbers), 1)
         table = Table(
             table_rows,
             repeatRows=1,
             colWidths=[10 * mm, 45 * mm, 30 * mm]
             + [stage_width] * len(stage_numbers)
-            + [25 * mm, 25 * mm],
+            + [25 * mm, 25 * mm, 25 * mm],
         )
         table.setStyle(
             TableStyle(

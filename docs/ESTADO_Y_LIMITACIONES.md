@@ -4,7 +4,7 @@
 
 Comprobaciones realizadas durante el desarrollo de la v1.3.0:
 
-- suite de 103 pruebas unitarias y funcionales;
+- suite de 104 pruebas unitarias y funcionales;
 - bases SQLite temporales para todos los flujos de escritura;
 - migración v1 a v2 con backup y conservación de tiempos;
 - migración v2 a v3 con backup y conservación de las competiciones;
@@ -29,6 +29,7 @@ La ventana no se ha sometido a automatización gráfica real y el ejecutable tod
 | Retirada del rally | Conserva resultados, bloquea tramos posteriores y permite reactivar |
 | Descalificación | Sin posición ni diferencia; visible al final, conserva tiempos y puede revertirse |
 | Clasificación | Mantiene la columna real del tramo y separa categorías |
+| Victorias de tramo | Recuento visible por participante, con empates, retiradas y DSQ cubiertos |
 | Intercambio | Exportación e importación CSV/Excel versionada, validada y transaccional |
 | PDF | Clasificación A4 horizontal paginada por bloques de tramos |
 | Panel de tramo | Seguimiento automático, contadores, pendientes y resultados modificados |

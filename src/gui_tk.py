@@ -1853,7 +1853,7 @@ class RallyApp(tk.Tk):
     # Configura columnas y scrolls de la tabla.
     def _build_table(self, stages):
         self._clear_table()
-        columns = ["rank", "participant", "status"] + [f"stage_{i}" for i in range(1, stages + 1)] + ["total", "diff"]
+        columns = ["rank", "participant", "status"] + [f"stage_{i}" for i in range(1, stages + 1)] + ["stage_wins", "total", "diff"]
         self.tree = ttk.Treeview(self.table_frame, columns=columns, show="headings", height=16)
         self.tree.grid(row=0, column=0, sticky="nsew")
         self.tree.bind("<MouseWheel>", self._on_mousewheel)
@@ -1863,7 +1863,7 @@ class RallyApp(tk.Tk):
         self.tree.bind("<Shift-Button-4>", self._on_shift_mousewheel)
         self.tree.bind("<Shift-Button-5>", self._on_shift_mousewheel)
 
-        headings = ["Pos", "Piloto", "Estado"] + [f"Tramo {i}" for i in range(1, stages + 1)] + ["General", "Dif."]
+        headings = ["Pos", "Piloto", "Estado"] + [f"Tramo {i}" for i in range(1, stages + 1)] + ["Tramos ganados", "General", "Dif."]
         for col, heading in zip(columns, headings):
             self.tree.heading(col, text=heading, command=lambda c=col: self.sort_by_column(c, stages))
             anchor = "w" if col in ("participant", "status") else "center"
@@ -1871,7 +1871,7 @@ class RallyApp(tk.Tk):
                 width = 180
             elif col == "status":
                 width = 125
-            elif col in ("total", "diff"):
+            elif col in ("stage_wins", "total", "diff"):
                 width = 120
             else:
                 width = 110
@@ -1921,6 +1921,7 @@ class RallyApp(tk.Tk):
                     self.service.format_stage_result(result)
                     for result in row["stage_results"]
                 ],
+                row["stage_wins"],
                 self.service.format_time(row["total"]),
                 diff_text,
             ]
@@ -1945,6 +1946,8 @@ class RallyApp(tk.Tk):
             key_func = lambda r: r["participant"].lower()
         elif column == "status":
             key_func = lambda r: r["classification_status"]
+        elif column == "stage_wins":
+            key_func = lambda r: r["stage_wins"]
         elif column.startswith("stage_"):
             stage_index = int(column.split("_")[1]) - 1
             key_func = lambda r: (missing_last(r["stage_times"][stage_index]), r["stage_times"][stage_index] or 0)
