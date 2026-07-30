@@ -136,10 +136,13 @@ La tabla contiene:
 - **Piloto**: nombre del participante;
 - **Estado**: clasificado, retirado, pendiente o no presentado;
 - **Tramo N**: tiempo mostrado para cada etapa;
+- **Tramos ganados**: cantidad de etapas en las que el piloto registró el mejor tiempo válido;
 - **General**: suma de los registros recuperados para el participante;
 - **Dif.**: diferencia respecto al primer clasificado.
 
 Los tiempos se almacenan en milisegundos y se muestran como `m:ss.xxx`. Un tramo sin ningún tiempo todavía se muestra como `-`; cuando el tramo ya ha comenzado, los pilotos activos sin resultado muestran `Pendiente`. La tabla usa además `NF`, `NP` y `DSQ` para los estados explícitos.
+
+Solo cuentan como victorias los resultados **Finalizado**. Si varios pilotos empatan con el mejor tiempo, todos suman una victoria. Los retirados conservan las logradas antes de abandonar y los descalificados muestran cero; al descalificar al ganador, la victoria pasa automáticamente al siguiente mejor tiempo válido.
 
 Puedes pulsar cualquier cabecera para ordenar la vista en sentido ascendente. La ordenación no alterna entre ascendente y descendente. Ordenar la vista tampoco recalcula el número de posición: **Pos** sigue representando el ranking general original.
 

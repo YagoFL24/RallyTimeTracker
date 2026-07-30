@@ -123,6 +123,7 @@ class LeaderboardTests(TemporaryDatabaseTestCase):
                 "rank": row["rank"],
                 "participant": row["participant"],
                 "stage_times": row["stage_times"],
+                "stage_wins": row["stage_wins"],
                 "total": row["total"],
                 "diff": row["diff"],
             }
@@ -135,6 +136,7 @@ class LeaderboardTests(TemporaryDatabaseTestCase):
                     "rank": 1,
                     "participant": "Ana",
                     "stage_times": [60_000, 61_000],
+                    "stage_wins": 2,
                     "total": 121_000,
                     "diff": 0,
                 },
@@ -142,6 +144,7 @@ class LeaderboardTests(TemporaryDatabaseTestCase):
                     "rank": 2,
                     "participant": "Marta",
                     "stage_times": [61_500, 62_500],
+                    "stage_wins": 0,
                     "total": 124_000,
                     "diff": 3_000,
                 },
@@ -149,11 +152,42 @@ class LeaderboardTests(TemporaryDatabaseTestCase):
                     "rank": 3,
                     "participant": "Luis",
                     "stage_times": [62_000, 63_000],
+                    "stage_wins": 0,
                     "total": 125_000,
                     "diff": 4_000,
                 },
             ],
         )
+
+    def test_stage_wins_count_ties_and_exclude_disqualified_participants(self):
+        self.create_competition(stages=2, participants=["Ana", "Luis", "Marta"])
+        times = (
+            ("Ana", 1, "1:00.000"),
+            ("Luis", 1, "1:00.000"),
+            ("Marta", 1, "1:01.000"),
+            ("Ana", 2, "1:02.000"),
+            ("Luis", 2, "1:03.000"),
+            ("Marta", 2, "1:04.000"),
+        )
+        for participant, stage, time_text in times:
+            self.assertTrue(
+                self.service.add_time_str("Rally", participant, stage, time_text)[0]
+            )
+
+        wins = {
+            row["participant"]: row["stage_wins"]
+            for row in self.service.get_competition_info("Rally")["leaderboard"]
+        }
+        self.assertEqual(wins, {"Ana": 2, "Luis": 1, "Marta": 0})
+
+        self.assertTrue(
+            self.service.set_result_status("Rally", "Ana", 2, "Descalificado")[0]
+        )
+        wins = {
+            row["participant"]: row["stage_wins"]
+            for row in self.service.get_competition_info("Rally")["leaderboard"]
+        }
+        self.assertEqual(wins, {"Luis": 2, "Marta": 0, "Ana": 0})
 
     def test_default_stage_advances_only_when_the_current_stage_is_complete(self):
         competition_id = self.create_competition(
@@ -352,9 +386,9 @@ class GuiLogicTests(unittest.TestCase):
 
     def test_table_sorting_handles_text_totals_and_missing_stage_times(self):
         rows = [
-            {"rank": 2, "participant": "Luis", "total": 130, "diff": 10, "stage_times": [60, 70]},
-            {"rank": 3, "participant": "ana", "total": 120, "diff": 0, "stage_times": [None, 120]},
-            {"rank": 1, "participant": "Marta", "total": 125, "diff": 5, "stage_times": [55, 70]},
+            {"rank": 2, "participant": "Luis", "stage_wins": 1, "total": 130, "diff": 10, "stage_times": [60, 70]},
+            {"rank": 3, "participant": "ana", "stage_wins": 0, "total": 120, "diff": 0, "stage_times": [None, 120]},
+            {"rank": 1, "participant": "Marta", "stage_wins": 2, "total": 125, "diff": 5, "stage_times": [55, 70]},
         ]
 
         class FakeView:
@@ -380,6 +414,11 @@ class GuiLogicTests(unittest.TestCase):
         self.assertEqual(
             [row["total"] for row in view.sorted_rows], [120, 125, 130]
         )
+        RallyApp.sort_by_column(view, "stage_wins", 2)
+        self.assertEqual(
+            [row["participant"] for row in view.sorted_rows],
+            ["ana", "Luis", "Marta"],
+        )
         RallyApp.sort_by_column(view, "rank", 2)
         self.assertEqual(
             [row["participant"] for row in view.sorted_rows],
@@ -390,6 +429,7 @@ class GuiLogicTests(unittest.TestCase):
                 "rank": "DSQ",
                 "participant": "Zoe",
                 "rally_status": "disqualified",
+                "stage_wins": 0,
                 "total": 50,
                 "diff": None,
                 "stage_times": [50, None],

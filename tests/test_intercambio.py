@@ -97,6 +97,10 @@ class ExchangeTests(unittest.TestCase):
             self.assertEqual(workbook.sheetnames, ["Datos", "Clasificación"])
             self.assertEqual(workbook["Datos"]["A2"].value, "RallyTimeTracker")
             self.assertEqual(workbook["Clasificación"]["A1"].value, "Pos")
+            headers = [
+                cell.value for cell in next(workbook["Clasificación"].iter_rows())
+            ]
+            self.assertIn("Tramos ganados", headers)
         finally:
             workbook.close()
 

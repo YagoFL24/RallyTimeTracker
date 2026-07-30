@@ -1094,11 +1094,29 @@ class RallyService:
                     "total": total,
                     "diff": None,
                     "completed_stages": completed,
+                    "stage_wins": 0,
                     "classification_status": classification_status,
                     "rally_status": participant["rally_status"],
                     "_group": group,
                 }
             )
+
+        for stage_index in range(stages):
+            finishers = [
+                row
+                for row in rows
+                if row["rally_status"] != "disqualified"
+                and row["stage_results"][stage_index]["status"] == "finished"
+                and row["stage_results"][stage_index]["time_ms"] is not None
+            ]
+            if not finishers:
+                continue
+            best_time = min(
+                row["stage_results"][stage_index]["time_ms"] for row in finishers
+            )
+            for row in finishers:
+                if row["stage_results"][stage_index]["time_ms"] == best_time:
+                    row["stage_wins"] += 1
 
         rows.sort(
             key=lambda row: (

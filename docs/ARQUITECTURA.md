@@ -272,6 +272,8 @@ El orden del calendario se persiste con enteros consecutivos y puede cambiar sin
 
 `RallyService._build_leaderboard` recibe los resultados con su número real de tramo, por lo que conserva huecos. Ordena participantes activos, retirados y descalificados, en ese orden. Dentro de cada grupo prioriza más tramos con tiempo —`finished` o `stage_dnf`— y después menor tiempo acumulado.
 
+La misma proyección calcula `stage_wins` comparando únicamente resultados `finished`. Cada empate con el mejor tiempo suma una victoria a todos los implicados, los retirados conservan las suyas y los descalificados quedan excluidos. La GUI, Excel y PDF consumen este valor común.
+
 Los descalificados permanecen al final con rango textual `DSQ` y sin diferencia. Sus resultados con tiempo se conservan y los huecos se proyectan como `dsq` únicamente para la presentación. Para bases creadas antes de esta regla, un tiempo desplazado a `previous_time_ms` por la descalificación se recupera en la vista. Las diferencias provisionales solo comparan participantes no descalificados del mismo grupo y con el mismo progreso.
 
 La clasificación de campeonato solo suma pruebas finalizadas. Excluye invitados, no presentados y descalificados antes de asignar puntos. Un empate de rally comparte posición y salta la siguiente; un retirado sí conserva su clasificación. El bonus se concede a todos los pilotos válidos empatados con más victorias de tramo, contando también empates exactos, y se reasigna si el máximo está descalificado.

@@ -14,7 +14,7 @@ Aplicación de escritorio para registrar y clasificar tiempos de una competició
 - Completar tramos no finalizados con el peor tiempo más 10 segundos sin retirar al piloto del rally.
 - Retirar definitivamente un participante del rally y reactivarlo posteriormente.
 - Aplicar penalizaciones acumulativas en segundos.
-- Consultar la clasificación, el total y la diferencia con el líder.
+- Consultar la clasificación, el total, la diferencia con el líder y los tramos ganados por cada participante.
 - Exportar la competición seleccionada a CSV o Excel e importarla sin sobrescribir datos existentes.
 - Guardar la clasificación como un PDF paginado y listo para imprimir.
 - Supervisar el tramo actual con contadores, pendientes y resultados modificados.
