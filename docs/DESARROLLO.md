@@ -44,7 +44,7 @@ No uses una base real para pruebas destructivas. Crea un directorio temporal, ca
 
 ## 4. Pruebas y controles
 
-El repositorio contiene 88 pruebas unitarias y funcionales. Las operaciones de datos se ejecutan sobre bases SQLite temporales, nunca sobre `data/datos.db`.
+El repositorio contiene 103 pruebas unitarias y funcionales. Las operaciones de datos se ejecutan sobre bases SQLite temporales, nunca sobre `data/datos.db`.
 
 Cobertura automatizada actual:
 
@@ -59,6 +59,9 @@ Cobertura automatizada actual:
 - abandonos, acumulación de penalizaciones y protección frente a overflow;
 - ordenación de tabla y carga de combos sin levantar una ventana real;
 - recorrido del siguiente piloto pendiente, cambio circular de piloto/tramo y guardado por teclado;
+- migración v2 a v3, planteles, alias, invitados, calendario y protección de competiciones vinculadas;
+- puntuación de campeonatos, empates, bonus de tramos, DSQ, retiradas, bajas y recálculo;
+- exportación de campeonatos a CSV, Excel y PDF;
 - SemVer, lectura de commits, changelog, notas y salidas de GitHub Actions.
 
 Todavía no hay automatización de la renderización gráfica real, interacción con diálogos o empaquetado ejecutable. Tampoco hay linter, formateador, comprobación de tipos o informe porcentual de cobertura.
@@ -88,7 +91,12 @@ Comprobación manual mínima recomendada:
 7. ordenar cada columna;
 8. cambiar el tema;
 9. cerrar, reabrir y comprobar persistencia;
-10. borrar la competición y comprobar que desaparecen todos sus datos.
+10. crear un campeonato, añadir la competición y comprobar la asignación de pilotos e invitados;
+11. completar la prueba y verificar posiciones, puntos, bonus y diferencias;
+12. retirar y reincorporar un piloto desde otra prueba;
+13. reordenar y desvincular una prueba, comprobando que la competición se conserva;
+14. exportar el campeonato a CSV, Excel y PDF;
+15. borrar la competición y comprobar que desaparecen todos sus datos.
 
 Antes de automatizar casos de integración, conviene permitir inyectar la ruta de SQLite en vez de depender de `os.getcwd()`.
 
@@ -213,4 +221,5 @@ Hay archivos `__pycache__` históricos ya versionados; ignorarlos no los elimina
 - Revisar la nueva sección de `CHANGELOG.md`.
 - Probar el EXE en una máquina Windows limpia.
 - Hacer una copia de una base real y comprobar compatibilidad.
+- Validar manualmente la migración v2 a v3 y la clasificación de un campeonato representativo.
 - Verificar que no se incluyan bases, participantes ni artefactos locales en Git.

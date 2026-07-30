@@ -3,7 +3,7 @@ import sqlite3
 import sys
 import tkinter as tk
 from tkinter import font as tkfont
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox, simpledialog, ttk
 
 from database_schema import DatabaseMigrationError
 from servicios import RallyService
@@ -27,6 +27,12 @@ class RallyApp(tk.Tk):
         self.backup_window = None
         self.backup_tree = None
         self._backup_paths = {}
+        self.championship_window = None
+        self.championship_list = None
+        self.championship_standings_tree = None
+        self.championship_calendar_tree = None
+        self.championship_drivers_tree = None
+        self.current_championship = None
 
         self.title("Rally Time Tracker")
         self.geometry("1100x650")
@@ -148,8 +154,14 @@ class RallyApp(tk.Tk):
             command=self.open_backup_manager,
         ).grid(row=2, column=0, columnspan=3, sticky="ew", pady=(6, 0))
 
+        ttk.Button(
+            buttons,
+            text="Campeonatos",
+            command=self.open_championship_manager,
+        ).grid(row=3, column=0, columnspan=3, sticky="ew", pady=(6, 0))
+
         self.theme_button = ttk.Button(panel, text="Modo oscuro", command=self.toggle_theme)
-        self.theme_button.grid(row=3, column=0, sticky="ew", pady=(8, 0))
+        self.theme_button.grid(row=4, column=0, sticky="ew", pady=(8, 0))
 
     # Construye el panel de detalles y tabla.
     def _build_right_panel(self, parent):
@@ -704,9 +716,799 @@ class RallyApp(tk.Tk):
             self._close_stage_dashboard()
         self.refresh_competitions()
         self._refresh_backup_manager()
+        if self.championship_window is not None:
+            self._refresh_championship_list()
         messagebox.showinfo(
             "Restauración completada", message, parent=self.backup_window or self
         )
+
+    # Abre el gestor independiente de campeonatos.
+    def open_championship_manager(self):
+        if self.championship_window is not None and self.championship_window.winfo_exists():
+            self.championship_window.deiconify()
+            self.championship_window.lift()
+            self._refresh_championship_list()
+            return
+        window = tk.Toplevel(self)
+        self.championship_window = window
+        window.title("Campeonatos")
+        window.geometry("1350x760")
+        window.minsize(1050, 650)
+        window.transient(self)
+        window.protocol("WM_DELETE_WINDOW", self._close_championship_manager)
+        window.bind("<Destroy>", self._on_championship_manager_destroy)
+        window.configure(bg=self.theme_colors.get("bg"))
+        window.columnconfigure(0, weight=0)
+        window.columnconfigure(1, weight=1)
+        window.rowconfigure(0, weight=1)
+
+        left = ttk.Frame(window, padding=10)
+        left.grid(row=0, column=0, sticky="nsw")
+        left.rowconfigure(1, weight=1)
+        ttk.Label(left, text="Campeonatos").grid(row=0, column=0, sticky="w")
+        self.championship_list = tk.Listbox(left, width=28, height=22)
+        self.championship_list.grid(row=1, column=0, sticky="nsew", pady=6)
+        self.championship_list.bind(
+            "<<ListboxSelect>>", self._on_select_championship
+        )
+        self.championship_list.configure(
+            bg=self.theme_colors["bg"],
+            fg=self.theme_colors["fg"],
+            selectbackground=self.theme_colors["accent"],
+            selectforeground="#ffffff",
+        )
+        left_buttons = ttk.Frame(left)
+        left_buttons.grid(row=2, column=0, sticky="ew")
+        left_buttons.columnconfigure(0, weight=1)
+        left_buttons.columnconfigure(1, weight=1)
+        ttk.Button(
+            left_buttons, text="Nuevo", command=self._open_new_championship
+        ).grid(row=0, column=0, sticky="ew", padx=(0, 5))
+        ttk.Button(
+            left_buttons, text="Borrar", command=self._delete_selected_championship
+        ).grid(row=0, column=1, sticky="ew")
+        ttk.Button(
+            left_buttons, text="Exportar", command=self._export_championship_clicked
+        ).grid(row=1, column=0, sticky="ew", padx=(0, 5), pady=(5, 0))
+        ttk.Button(
+            left_buttons, text="Guardar PDF", command=self._export_championship_pdf_clicked
+        ).grid(row=1, column=1, sticky="ew", pady=(5, 0))
+
+        right = ttk.Frame(window, padding=(0, 10, 10, 10))
+        right.grid(row=0, column=1, sticky="nsew")
+        right.columnconfigure(0, weight=1)
+        right.rowconfigure(2, weight=1)
+        self.championship_header_var = tk.StringVar(value="Selecciona un campeonato")
+        ttk.Label(
+            right,
+            textvariable=self.championship_header_var,
+            font=("Segoe UI", 12, "bold"),
+        ).grid(row=0, column=0, sticky="w")
+
+        settings = ttk.LabelFrame(right, text="Puntuacion", padding=7)
+        settings.grid(row=1, column=0, sticky="ew", pady=(7, 7))
+        settings.columnconfigure(1, weight=1)
+        ttk.Label(settings, text="Puntos por posicion").grid(row=0, column=0, sticky="w")
+        self.championship_points_var = tk.StringVar()
+        ttk.Entry(settings, textvariable=self.championship_points_var).grid(
+            row=0, column=1, sticky="ew", padx=6
+        )
+        ttk.Label(settings, text="Bonus tramos").grid(row=0, column=2, sticky="w")
+        self.championship_bonus_var = tk.StringVar()
+        ttk.Entry(settings, textvariable=self.championship_bonus_var, width=7).grid(
+            row=0, column=3, sticky="w", padx=6
+        )
+        self.championship_finalized_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            settings,
+            text="Finalizado manualmente",
+            variable=self.championship_finalized_var,
+        ).grid(row=0, column=4, sticky="w", padx=6)
+        ttk.Button(
+            settings, text="Guardar configuracion", command=self._save_championship_settings
+        ).grid(row=0, column=5, sticky="e")
+
+        notebook = ttk.Notebook(right)
+        notebook.grid(row=2, column=0, sticky="nsew")
+        standings_tab = ttk.Frame(notebook)
+        calendar_tab = ttk.Frame(notebook)
+        drivers_tab = ttk.Frame(notebook)
+        notebook.add(standings_tab, text="Clasificacion")
+        notebook.add(calendar_tab, text="Calendario")
+        notebook.add(drivers_tab, text="Pilotos")
+        self._build_championship_standings_tab(standings_tab)
+        self._build_championship_calendar_tab(calendar_tab)
+        self._build_championship_drivers_tab(drivers_tab)
+        self._refresh_championship_list()
+
+    def _build_championship_standings_tab(self, parent):
+        parent.columnconfigure(0, weight=1)
+        parent.rowconfigure(0, weight=1)
+        self.championship_standings_tree = ttk.Treeview(parent, show="headings")
+        self.championship_standings_tree.grid(row=0, column=0, sticky="nsew")
+        vertical = ttk.Scrollbar(
+            parent, orient="vertical", command=self.championship_standings_tree.yview
+        )
+        horizontal = ttk.Scrollbar(
+            parent, orient="horizontal", command=self.championship_standings_tree.xview
+        )
+        vertical.grid(row=0, column=1, sticky="ns")
+        horizontal.grid(row=1, column=0, sticky="ew")
+        self.championship_standings_tree.configure(
+            yscrollcommand=vertical.set, xscrollcommand=horizontal.set
+        )
+
+    def _build_championship_calendar_tab(self, parent):
+        parent.columnconfigure(0, weight=1)
+        parent.rowconfigure(0, weight=1)
+        columns = ("order", "competition", "date", "status")
+        self.championship_calendar_tree = ttk.Treeview(
+            parent, columns=columns, show="headings", selectmode="browse"
+        )
+        for column, label, width in (
+            ("order", "Orden", 70),
+            ("competition", "Competicion", 300),
+            ("date", "Fecha", 130),
+            ("status", "Estado", 130),
+        ):
+            self.championship_calendar_tree.heading(column, text=label)
+            self.championship_calendar_tree.column(column, width=width, anchor="center")
+        self.championship_calendar_tree.column("competition", anchor="w")
+        self.championship_calendar_tree.grid(row=0, column=0, sticky="nsew")
+        ttk.Scrollbar(
+            parent, orient="vertical", command=self.championship_calendar_tree.yview
+        ).grid(row=0, column=1, sticky="ns")
+        controls = ttk.Frame(parent)
+        controls.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(7, 0))
+        for column in range(7):
+            controls.columnconfigure(column, weight=1)
+        actions = (
+            ("Añadir existente", self._open_add_existing_championship_event),
+            ("Crear competicion", self._open_create_championship_event),
+            ("Subir", lambda: self._move_selected_championship_event(-1)),
+            ("Bajar", lambda: self._move_selected_championship_event(1)),
+            ("Editar fecha", self._edit_selected_championship_event_date),
+            ("Retirar prueba", self._remove_selected_championship_event),
+            ("Actualizar", self._refresh_selected_championship),
+        )
+        for index, (text, command) in enumerate(actions):
+            ttk.Button(controls, text=text, command=command).grid(
+                row=0, column=index, sticky="ew", padx=(0, 5) if index < 6 else 0
+            )
+
+    def _build_championship_drivers_tab(self, parent):
+        parent.columnconfigure(0, weight=1)
+        parent.rowconfigure(0, weight=1)
+        columns = ("driver", "status", "aliases")
+        self.championship_drivers_tree = ttk.Treeview(
+            parent, columns=columns, show="headings", selectmode="browse"
+        )
+        for column, label, width in (
+            ("driver", "Piloto oficial", 260),
+            ("status", "Estado", 120),
+            ("aliases", "Alias conocidos", 480),
+        ):
+            self.championship_drivers_tree.heading(column, text=label)
+            self.championship_drivers_tree.column(column, width=width, anchor="w")
+        self.championship_drivers_tree.grid(row=0, column=0, sticky="nsew")
+        controls = ttk.Frame(parent)
+        controls.grid(row=1, column=0, sticky="ew", pady=(7, 0))
+        controls.columnconfigure(0, weight=1)
+        controls.columnconfigure(1, weight=1)
+        ttk.Button(
+            controls, text="Abandonar campeonato", command=self._withdraw_championship_driver
+        ).grid(row=0, column=0, sticky="ew", padx=(0, 5))
+        ttk.Button(
+            controls, text="Reincorporar", command=self._reactivate_championship_driver
+        ).grid(row=0, column=1, sticky="ew")
+
+    def _on_championship_manager_destroy(self, event):
+        if event.widget is self.championship_window:
+            self.championship_window = None
+            self.current_championship = None
+
+    def _close_championship_manager(self):
+        if self.championship_window is not None:
+            self.championship_window.destroy()
+
+    def _refresh_championship_list(self, select_name=None):
+        if self.championship_list is None:
+            return
+        previous = select_name or (
+            self.current_championship["name"] if self.current_championship else None
+        )
+        self.championship_list.delete(0, tk.END)
+        names = self.service.list_championships()
+        for name in names:
+            self.championship_list.insert(tk.END, name)
+        if previous in names:
+            index = names.index(previous)
+            self.championship_list.selection_set(index)
+            self.championship_list.activate(index)
+            self._on_select_championship()
+        elif names:
+            self.championship_list.selection_set(0)
+            self.championship_list.activate(0)
+            self._on_select_championship()
+        else:
+            self.current_championship = None
+            self.championship_header_var.set("No hay campeonatos")
+            self._clear_championship_trees()
+
+    def _on_select_championship(self, _event=None):
+        selection = self.championship_list.curselection()
+        if not selection:
+            return
+        name = self.championship_list.get(selection[0])
+        championship = self.service.get_championship_info(name)
+        if championship is None:
+            self._refresh_championship_list()
+            return
+        self.current_championship = championship
+        self._render_championship(championship)
+
+    def _refresh_selected_championship(self):
+        if not self.current_championship:
+            return
+        self._refresh_championship_list(self.current_championship["name"])
+
+    def _clear_championship_trees(self):
+        for tree in (
+            self.championship_standings_tree,
+            self.championship_calendar_tree,
+            self.championship_drivers_tree,
+        ):
+            if tree is not None:
+                tree.delete(*tree.get_children())
+
+    def _render_championship(self, championship):
+        self.championship_header_var.set(
+            f"{championship['name']}  |  {championship['status']}  |  "
+            f"Pruebas: {len(championship['events'])}"
+        )
+        self.championship_points_var.set(
+            ", ".join(str(value) for value in championship["points_table"])
+        )
+        self.championship_bonus_var.set(str(championship["stage_win_bonus"]))
+        self.championship_finalized_var.set(bool(championship["manually_finalized"]))
+        self._render_championship_standings(championship)
+        self.championship_calendar_tree.delete(
+            *self.championship_calendar_tree.get_children()
+        )
+        for event in championship["events"]:
+            self.championship_calendar_tree.insert(
+                "",
+                tk.END,
+                iid=f"event-{event['id']}",
+                values=(
+                    event["event_order"],
+                    event["competition_name"],
+                    event["event_date"] or "-",
+                    event["status"],
+                ),
+            )
+        self.championship_drivers_tree.delete(
+            *self.championship_drivers_tree.get_children()
+        )
+        for driver in championship["drivers"]:
+            self.championship_drivers_tree.insert(
+                "",
+                tk.END,
+                iid=f"driver-{driver['id']}",
+                values=(
+                    driver["official_name"],
+                    "Activo" if driver["status"] == "active" else "Retirado",
+                    ", ".join(driver["aliases"]),
+                ),
+            )
+
+    def _render_championship_standings(self, championship):
+        tree = self.championship_standings_tree
+        tree.delete(*tree.get_children())
+        event_columns = [f"event_{event['id']}" for event in championship["events"]]
+        columns = (
+            "rank",
+            "driver",
+            "status",
+            *event_columns,
+            "points",
+            "difference",
+            "wins",
+            "podiums",
+            "stage_wins",
+            "retirements",
+        )
+        tree.configure(columns=columns)
+        headings = {
+            "rank": "Pos",
+            "driver": "Piloto",
+            "status": "Estado",
+            "points": "Puntos",
+            "difference": "Dif.",
+            "wins": "Victorias",
+            "podiums": "Podios",
+            "stage_wins": "Tramos",
+            "retirements": "Abandonos",
+        }
+        for event, column in zip(championship["events"], event_columns):
+            headings[column] = event["competition_name"]
+        for column in columns:
+            width = 190 if column == "driver" else 105
+            tree.heading(column, text=headings[column])
+            tree.column(column, width=width, anchor="w" if column == "driver" else "center")
+        for row in championship["standings"]:
+            event_values = []
+            for result in row["event_results"]:
+                if result is None:
+                    event_values.append("-")
+                elif result["bonus"]:
+                    event_values.append(
+                        f"{result['total_points']} ({result['points']}+{result['bonus']})"
+                    )
+                else:
+                    event_values.append(str(result["total_points"]))
+            tree.insert(
+                "",
+                tk.END,
+                values=(
+                    row["rank"],
+                    row["driver"],
+                    "Activo" if row["status"] == "active" else "Retirado",
+                    *event_values,
+                    row["points"],
+                    "-" if row["difference"] == 0 else f"-{row['difference']}",
+                    row["wins"],
+                    row["podiums"],
+                    row["stage_wins"],
+                    row["retirements"],
+                ),
+            )
+
+    @staticmethod
+    def _parse_points_text(text):
+        try:
+            values = [
+                int(value.strip())
+                for value in str(text).replace(";", ",").split(",")
+                if value.strip()
+            ]
+        except ValueError:
+            return None
+        return values or None
+
+    def _open_new_championship(self):
+        dialog = tk.Toplevel(self.championship_window)
+        dialog.title("Nuevo campeonato")
+        dialog.transient(self.championship_window)
+        dialog.grab_set()
+        dialog.configure(bg=self.theme_colors.get("bg"))
+        dialog.columnconfigure(1, weight=1)
+        name_var = tk.StringVar()
+        points_var = tk.StringVar(
+            value=", ".join(
+                str(value) for value in self.service.DEFAULT_CHAMPIONSHIP_POINTS
+            )
+        )
+        bonus_var = tk.StringVar(value="5")
+        ttk.Label(dialog, text="Nombre").grid(row=0, column=0, sticky="w", padx=8, pady=5)
+        ttk.Entry(dialog, textvariable=name_var).grid(
+            row=0, column=1, sticky="ew", padx=8, pady=5
+        )
+        ttk.Label(dialog, text="Pilotos (uno por linea)").grid(
+            row=1, column=0, sticky="nw", padx=8, pady=5
+        )
+        drivers_text = tk.Text(dialog, width=38, height=9)
+        drivers_text.grid(row=1, column=1, sticky="ew", padx=8, pady=5)
+        self._register_text_widget(drivers_text)
+        ttk.Label(dialog, text="Puntos por posicion").grid(
+            row=2, column=0, sticky="w", padx=8, pady=5
+        )
+        ttk.Entry(dialog, textvariable=points_var).grid(
+            row=2, column=1, sticky="ew", padx=8, pady=5
+        )
+        ttk.Label(dialog, text="Bonus por victorias de tramo").grid(
+            row=3, column=0, sticky="w", padx=8, pady=5
+        )
+        ttk.Entry(dialog, textvariable=bonus_var).grid(
+            row=3, column=1, sticky="ew", padx=8, pady=5
+        )
+
+        def create():
+            points = self._parse_points_text(points_var.get())
+            try:
+                bonus = int(bonus_var.get())
+            except ValueError:
+                bonus = -1
+            drivers = [
+                line.strip()
+                for line in drivers_text.get("1.0", tk.END).splitlines()
+                if line.strip()
+            ]
+            ok, message = self.service.create_championship(
+                name_var.get(), drivers, points, bonus
+            )
+            self.set_status(message, ok=ok)
+            if ok:
+                name = name_var.get().strip()
+                dialog.destroy()
+                self._refresh_championship_list(name)
+
+        buttons = ttk.Frame(dialog)
+        buttons.grid(row=4, column=0, columnspan=2, sticky="ew", padx=8, pady=8)
+        buttons.columnconfigure(0, weight=1)
+        buttons.columnconfigure(1, weight=1)
+        ttk.Button(buttons, text="Crear", command=create).grid(
+            row=0, column=0, sticky="ew", padx=(0, 5)
+        )
+        ttk.Button(buttons, text="Cancelar", command=dialog.destroy).grid(
+            row=0, column=1, sticky="ew"
+        )
+
+    def _delete_selected_championship(self):
+        if not self.current_championship:
+            self.set_status("Seleccione un campeonato.", ok=False)
+            return
+        name = self.current_championship["name"]
+        if not messagebox.askyesno(
+            "Borrar campeonato",
+            f"¿Borrar '{name}'? Sus competiciones se conservaran.",
+            parent=self.championship_window,
+        ):
+            return
+        ok, message = self.service.delete_championship(name)
+        self.set_status(message, ok=ok)
+        if ok:
+            self.current_championship = None
+            self._refresh_championship_list()
+
+    def _save_championship_settings(self):
+        if not self.current_championship:
+            self.set_status("Seleccione un campeonato.", ok=False)
+            return
+        points = self._parse_points_text(self.championship_points_var.get())
+        try:
+            bonus = int(self.championship_bonus_var.get())
+        except ValueError:
+            bonus = -1
+        if not messagebox.askyesno(
+            "Recalcular campeonato",
+            "¿Guardar la puntuacion y recalcular toda la clasificacion?",
+            parent=self.championship_window,
+        ):
+            return
+        ok, message = self.service.configure_championship(
+            self.current_championship["name"],
+            points,
+            bonus,
+            self.championship_finalized_var.get(),
+        )
+        self.set_status(message, ok=ok)
+        if ok:
+            self._refresh_selected_championship()
+
+    def _open_add_existing_championship_event(self):
+        if not self.current_championship:
+            self.set_status("Seleccione un campeonato.", ok=False)
+            return
+        used = {
+            event["competition_name"].casefold()
+            for event in self.current_championship["events"]
+        }
+        available = [
+            name for name in self.service.list_competitions() if name.casefold() not in used
+        ]
+        if not available:
+            self.set_status("No hay competiciones disponibles para añadir.", ok=False)
+            return
+        dialog = tk.Toplevel(self.championship_window)
+        dialog.title("Añadir competicion existente")
+        dialog.transient(self.championship_window)
+        dialog.grab_set()
+        dialog.configure(bg=self.theme_colors.get("bg"))
+        dialog.columnconfigure(1, weight=1)
+        competition_var = tk.StringVar(value=available[0])
+        ttk.Label(dialog, text="Competicion").grid(
+            row=0, column=0, sticky="w", padx=8, pady=6
+        )
+        competition_combo = ttk.Combobox(
+            dialog,
+            textvariable=competition_var,
+            values=available,
+            state="readonly",
+            width=35,
+        )
+        competition_combo.grid(row=0, column=1, sticky="ew", padx=8, pady=6)
+        mapping_frame = ttk.LabelFrame(dialog, text="Correspondencia de pilotos", padding=8)
+        mapping_frame.grid(row=1, column=0, columnspan=2, sticky="ew", padx=8, pady=5)
+        mapping_frame.columnconfigure(1, weight=1)
+        mapping_vars = {}
+
+        def rebuild_mappings(_event=None):
+            for widget in mapping_frame.winfo_children():
+                widget.destroy()
+            mapping_vars.clear()
+            competition = self.service.get_competition_info(competition_var.get())
+            if competition is None:
+                return
+            participants = competition["participants"]
+            participant_keys = {name.casefold(): name for name in participants}
+            row_index = 0
+            for driver in self.current_championship["drivers"]:
+                if driver["status"] != "active":
+                    continue
+                selected = ""
+                for candidate in [driver["official_name"], *driver["aliases"]]:
+                    if candidate.casefold() in participant_keys:
+                        selected = participant_keys[candidate.casefold()]
+                        break
+                variable = tk.StringVar(value=selected)
+                mapping_vars[driver["official_name"]] = variable
+                ttk.Label(mapping_frame, text=driver["official_name"]).grid(
+                    row=row_index, column=0, sticky="w", padx=(0, 8), pady=2
+                )
+                ttk.Combobox(
+                    mapping_frame,
+                    textvariable=variable,
+                    values=participants,
+                    state="readonly",
+                ).grid(row=row_index, column=1, sticky="ew", pady=2)
+                row_index += 1
+
+        competition_combo.bind("<<ComboboxSelected>>", rebuild_mappings)
+        rebuild_mappings()
+
+        def add():
+            mappings = {name: variable.get() for name, variable in mapping_vars.items()}
+            ok, message = self.service.add_competition_to_championship(
+                self.current_championship["name"], competition_var.get(), mappings
+            )
+            self.set_status(message, ok=ok)
+            if ok:
+                dialog.destroy()
+                self._refresh_selected_championship()
+
+        buttons = ttk.Frame(dialog)
+        buttons.grid(row=2, column=0, columnspan=2, sticky="ew", padx=8, pady=8)
+        buttons.columnconfigure(0, weight=1)
+        buttons.columnconfigure(1, weight=1)
+        ttk.Button(buttons, text="Añadir", command=add).grid(
+            row=0, column=0, sticky="ew", padx=(0, 5)
+        )
+        ttk.Button(buttons, text="Cancelar", command=dialog.destroy).grid(
+            row=0, column=1, sticky="ew"
+        )
+
+    def _open_create_championship_event(self):
+        if not self.current_championship:
+            self.set_status("Seleccione un campeonato.", ok=False)
+            return
+        dialog = tk.Toplevel(self.championship_window)
+        dialog.title("Crear competicion para el campeonato")
+        dialog.transient(self.championship_window)
+        dialog.grab_set()
+        dialog.configure(bg=self.theme_colors.get("bg"))
+        dialog.columnconfigure(1, weight=1)
+        name_var = tk.StringVar()
+        stages_var = tk.StringVar()
+        date_var = tk.StringVar()
+        ttk.Label(dialog, text="Nombre").grid(row=0, column=0, sticky="w", padx=8, pady=6)
+        ttk.Entry(dialog, textvariable=name_var).grid(
+            row=0, column=1, sticky="ew", padx=8, pady=6
+        )
+        ttk.Label(dialog, text="Tramos").grid(row=1, column=0, sticky="w", padx=8, pady=6)
+        ttk.Entry(dialog, textvariable=stages_var).grid(
+            row=1, column=1, sticky="ew", padx=8, pady=6
+        )
+        ttk.Label(dialog, text="Fecha (AAAA-MM-DD)").grid(
+            row=2, column=0, sticky="w", padx=8, pady=6
+        )
+        ttk.Entry(dialog, textvariable=date_var).grid(
+            row=2, column=1, sticky="ew", padx=8, pady=6
+        )
+
+        def create():
+            try:
+                stages = int(stages_var.get())
+            except ValueError:
+                stages = 0
+            ok, message = self.service.create_competition_for_championship(
+                self.current_championship["name"],
+                name_var.get(),
+                stages,
+                date_var.get(),
+            )
+            self.set_status(message, ok=ok)
+            if ok:
+                dialog.destroy()
+                self.refresh_competitions()
+                self._refresh_selected_championship()
+
+        buttons = ttk.Frame(dialog)
+        buttons.grid(row=3, column=0, columnspan=2, sticky="ew", padx=8, pady=8)
+        buttons.columnconfigure(0, weight=1)
+        buttons.columnconfigure(1, weight=1)
+        ttk.Button(buttons, text="Crear", command=create).grid(
+            row=0, column=0, sticky="ew", padx=(0, 5)
+        )
+        ttk.Button(buttons, text="Cancelar", command=dialog.destroy).grid(
+            row=0, column=1, sticky="ew"
+        )
+
+    def _selected_championship_event_id(self):
+        selection = self.championship_calendar_tree.selection()
+        if not selection:
+            return None
+        return int(selection[0].split("-", 1)[1])
+
+    def _move_selected_championship_event(self, direction):
+        event_id = self._selected_championship_event_id()
+        if event_id is None or not self.current_championship:
+            self.set_status("Seleccione una prueba del calendario.", ok=False)
+            return
+        ok, message = self.service.move_competition_in_championship(
+            self.current_championship["name"], event_id, direction
+        )
+        self.set_status(message, ok=ok)
+        if ok:
+            self._refresh_selected_championship()
+
+    def _remove_selected_championship_event(self):
+        event_id = self._selected_championship_event_id()
+        if event_id is None or not self.current_championship:
+            self.set_status("Seleccione una prueba del calendario.", ok=False)
+            return
+        event = next(
+            row for row in self.current_championship["events"] if row["id"] == event_id
+        )
+        if not messagebox.askyesno(
+            "Retirar prueba",
+            f"¿Retirar '{event['competition_name']}' del campeonato? "
+            "La competicion no se borrara.",
+            parent=self.championship_window,
+        ):
+            return
+        ok, message = self.service.remove_competition_from_championship(
+            self.current_championship["name"], event_id
+        )
+        self.set_status(message, ok=ok)
+        if ok:
+            self._refresh_selected_championship()
+
+    def _edit_selected_championship_event_date(self):
+        event_id = self._selected_championship_event_id()
+        if event_id is None or not self.current_championship:
+            self.set_status("Seleccione una prueba del calendario.", ok=False)
+            return
+        event = next(
+            row for row in self.current_championship["events"] if row["id"] == event_id
+        )
+        value = simpledialog.askstring(
+            "Fecha de la prueba",
+            "Fecha AAAA-MM-DD (vacio para eliminarla):",
+            parent=self.championship_window,
+            initialvalue=event["event_date"] or "",
+        )
+        if value is None:
+            return
+        ok, message = self.service.set_competition_date(
+            event["competition_name"], value
+        )
+        self.set_status(message, ok=ok)
+        if ok:
+            self._refresh_selected_championship()
+
+    def _selected_championship_driver(self):
+        selection = self.championship_drivers_tree.selection()
+        if not selection or not self.current_championship:
+            return None
+        driver_id = int(selection[0].split("-", 1)[1])
+        return next(
+            (row for row in self.current_championship["drivers"] if row["id"] == driver_id),
+            None,
+        )
+
+    def _championship_driver_start_order(self, title):
+        if not self.current_championship["events"]:
+            self.set_status("El campeonato no tiene pruebas.", ok=False)
+            return None
+        selected_event = self._selected_championship_event_id()
+        initial = 1
+        if selected_event is not None:
+            initial = next(
+                row["event_order"]
+                for row in self.current_championship["events"]
+                if row["id"] == selected_event
+            )
+        return simpledialog.askinteger(
+            title,
+            "Aplicar desde la prueba numero:",
+            parent=self.championship_window,
+            minvalue=1,
+            maxvalue=len(self.current_championship["events"]),
+            initialvalue=initial,
+        )
+
+    def _withdraw_championship_driver(self):
+        driver = self._selected_championship_driver()
+        if driver is None:
+            self.set_status("Seleccione un piloto del campeonato.", ok=False)
+            return
+        order = self._championship_driver_start_order("Abandonar campeonato")
+        if order is None:
+            return
+        if not messagebox.askyesno(
+            "Abandonar campeonato",
+            f"¿Retirar a '{driver['official_name']}' desde la prueba {order}?",
+            parent=self.championship_window,
+        ):
+            return
+        ok, message = self.service.set_championship_driver_active(
+            self.current_championship["name"], driver["official_name"], order, False
+        )
+        self.set_status(message, ok=ok)
+        if ok:
+            self._refresh_selected_championship()
+
+    def _reactivate_championship_driver(self):
+        driver = self._selected_championship_driver()
+        if driver is None:
+            self.set_status("Seleccione un piloto del campeonato.", ok=False)
+            return
+        order = self._championship_driver_start_order("Reincorporar piloto")
+        if order is None:
+            return
+        ok, message = self.service.set_championship_driver_active(
+            self.current_championship["name"], driver["official_name"], order, True
+        )
+        self.set_status(message, ok=ok)
+        if ok:
+            self._refresh_selected_championship()
+
+    def _export_championship_clicked(self):
+        if not self.current_championship:
+            self.set_status("Seleccione un campeonato.", ok=False)
+            return
+        default_name = self._safe_filename(self.current_championship["name"])
+        destination = filedialog.asksaveasfilename(
+            parent=self.championship_window,
+            title="Exportar campeonato",
+            defaultextension=".xlsx",
+            initialfile=f"{default_name}.xlsx",
+            filetypes=[("Excel", "*.xlsx"), ("CSV", "*.csv")],
+        )
+        if not destination:
+            return
+        ok, message = self.service.export_championship(
+            self.current_championship["name"], destination
+        )
+        self.set_status(message, ok=ok)
+        if ok:
+            messagebox.showinfo("Exportacion", message, parent=self.championship_window)
+        else:
+            messagebox.showerror("Exportacion", message, parent=self.championship_window)
+
+    def _export_championship_pdf_clicked(self):
+        if not self.current_championship:
+            self.set_status("Seleccione un campeonato.", ok=False)
+            return
+        default_name = self._safe_filename(self.current_championship["name"])
+        destination = filedialog.asksaveasfilename(
+            parent=self.championship_window,
+            title="Guardar clasificacion del campeonato",
+            defaultextension=".pdf",
+            initialfile=f"{default_name}_clasificacion.pdf",
+            filetypes=[("PDF", "*.pdf")],
+        )
+        if not destination:
+            return
+        ok, message = self.service.export_championship_pdf(
+            self.current_championship["name"], destination
+        )
+        self.set_status(message, ok=ok)
+        if ok:
+            messagebox.showinfo("PDF", message, parent=self.championship_window)
+        else:
+            messagebox.showerror("PDF", message, parent=self.championship_window)
 
     # Limpia el estado y los controles cuando no hay competicion seleccionada.
     def _reset_competition_view(self):
@@ -761,6 +1563,11 @@ class RallyApp(tk.Tk):
         self._refresh_stage_dashboard(
             reset_stage=self.dashboard_competition_name != competition["name"]
         )
+        if (
+            self.championship_window is not None
+            and self.current_championship is not None
+        ):
+            self._refresh_selected_championship()
 
     # Abre el panel operativo del tramo actual.
     def open_stage_dashboard(self):
@@ -1352,11 +2159,19 @@ class RallyApp(tk.Tk):
         stages_var = tk.StringVar()
         ttk.Entry(dialog, textvariable=stages_var).grid(row=1, column=1, sticky="ew", padx=8, pady=2)
 
-        ttk.Label(dialog, text="Participantes (uno por linea)").grid(
+        ttk.Label(dialog, text="Fecha (AAAA-MM-DD, opcional)").grid(
             row=2, column=0, sticky="w", padx=8, pady=2
         )
+        date_var = tk.StringVar()
+        ttk.Entry(dialog, textvariable=date_var).grid(
+            row=2, column=1, sticky="ew", padx=8, pady=2
+        )
+
+        ttk.Label(dialog, text="Participantes (uno por linea)").grid(
+            row=3, column=0, sticky="w", padx=8, pady=2
+        )
         participants_text = tk.Text(dialog, height=6, width=30)
-        participants_text.grid(row=2, column=1, sticky="ew", padx=8, pady=2)
+        participants_text.grid(row=3, column=1, sticky="ew", padx=8, pady=2)
         self._register_text_widget(participants_text)
 
         # Valida datos y crea la competicion desde el dialogo.
@@ -1375,7 +2190,9 @@ class RallyApp(tk.Tk):
             else:
                 participants = lines
 
-            ok, msg = self.service.create_competition(name, stages, participants)
+            ok, msg = self.service.create_competition(
+                name, stages, participants, date_var.get()
+            )
             self.set_status(msg, ok=ok)
             if ok:
                 dialog.destroy()
@@ -1383,7 +2200,7 @@ class RallyApp(tk.Tk):
                 self._select_competition_by_name(name)
 
         buttons = ttk.Frame(dialog)
-        buttons.grid(row=3, column=0, columnspan=2, sticky="ew", padx=8, pady=(8, 8))
+        buttons.grid(row=4, column=0, columnspan=2, sticky="ew", padx=8, pady=(8, 8))
         buttons.columnconfigure(0, weight=1)
         buttons.columnconfigure(1, weight=1)
 
@@ -1532,6 +2349,17 @@ class RallyApp(tk.Tk):
             highlightbackground=colors["bg"],
             highlightcolor=colors["bg"],
         )
+        if self.championship_list is not None:
+            self.championship_list.configure(
+                bg=list_bg,
+                fg=colors["fg"],
+                selectbackground=colors["accent"],
+                selectforeground="#ffffff",
+                highlightbackground=colors["bg"],
+                highlightcolor=colors["bg"],
+            )
+        if self.championship_window is not None:
+            self.championship_window.configure(bg=colors["bg"])
         selected = self.competition_list.curselection()
         if selected:
             self.competition_list.selection_clear(0, tk.END)

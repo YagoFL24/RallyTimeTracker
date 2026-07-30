@@ -20,6 +20,10 @@ Aplicación de escritorio para registrar y clasificar tiempos de una competició
 - Supervisar el tramo actual con contadores, pendientes y resultados modificados.
 - Crear copias automáticas y manuales de SQLite y restaurarlas desde la aplicación.
 - Introducir resultados con atajos de teclado y avanzar automáticamente al siguiente piloto pendiente.
+- Crear campeonatos con calendario ordenado a partir de competiciones existentes o nuevas.
+- Mantener un plantel oficial con alias, invitados y bajas temporales por campeonato.
+- Calcular puntos configurables, desempates y bonus por victorias de tramo.
+- Exportar la clasificación completa del campeonato a CSV, Excel o PDF.
 - Ordenar visualmente la tabla por posición, piloto, tramo, total o diferencia.
 - Alternar entre tema claro y oscuro.
 - Usar una interfaz gráfica principal y una CLI heredada.
@@ -59,6 +63,9 @@ python src/cli_main.py
 9. Pulsa **Panel del tramo** para supervisar y cargar rápidamente los resultados pendientes.
 10. Usa **Copias de seguridad** para crear o restaurar una copia de la base.
 11. Pulsa **Atajos** o `F1` para consultar las teclas de introducción rápida.
+12. Pulsa **Campeonatos** para crear un campeonato, configurar sus puntos y gestionar el calendario.
+13. Añade competiciones existentes asignando cada participante oficial o crea una competición nueva con el plantel activo.
+14. Consulta la clasificación del campeonato y expórtala a CSV, Excel o PDF.
 
 Consulta la [guía de usuario](docs/MANUAL_USUARIO.md) para conocer todos los flujos y las reglas de cálculo.
 
@@ -71,7 +78,7 @@ Consulta la [guía de usuario](docs/MANUAL_USUARIO.md) para conocer todos los fl
 
 Para hacer una copia de seguridad, cierra la aplicación y copia `datos.db`. La aplicación no sincroniza ni envía información a servicios externos.
 
-La GUI crea además una copia consistente en cada arranque y antes de importar o restaurar. Se almacenan bajo `data/backups` al ejecutar desde código y bajo `%LOCALAPPDATA%\RallyTimeTracker\backups` en el ejecutable.
+La GUI crea además una copia consistente en cada arranque, antes de importar o restaurar y antes de eliminar o desvincular datos de un campeonato. Se almacenan bajo `data/backups` al ejecutar desde código y bajo `%LOCALAPPDATA%\RallyTimeTracker\backups` en el ejecutable.
 
 ## Documentación
 
@@ -108,6 +115,7 @@ RallyTimeTracker/
 │   ├── test_panel_tramo.py       # Panel operativo, alertas y carga rápida
 │   ├── test_copias_seguridad.py  # Creación, rotación y restauración
 │   ├── test_atajos_teclado.py     # Atajos y avance entre resultados pendientes
+│   ├── test_campeonatos.py        # Calendario, puntos, plantel, migración y exportación
 │   ├── test_validaciones.py     # Reglas y límites de entrada
 │   └── test_release.py          # SemVer, changelog y publicación
 ├── CHANGELOG.md

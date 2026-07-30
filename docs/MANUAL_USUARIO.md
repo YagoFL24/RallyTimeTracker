@@ -215,7 +215,7 @@ Ubicaciones:
 | `python src/main.py` | `<directorio desde el que se ejecuta>/data/datos.db` |
 | `.exe` de PyInstaller | `%LOCALAPPDATA%\RallyTimeTracker\datos.db` |
 
-La base y sus tablas se crean automáticamente al abrir la aplicación por primera vez. Una base anterior se migra al esquema de estados y crea antes `datos.v1.backup.db`; los tiempos existentes pasan a **Finalizado** y los huecos a **Pendiente**.
+La base y sus tablas se crean automáticamente al abrir la aplicación por primera vez. Una base v1 se migra al esquema de estados y crea antes `datos.v1.backup.db`; los tiempos existentes pasan a **Finalizado** y los huecos a **Pendiente**. Al abrir una base v2 se añaden las tablas de campeonatos y se crea previamente `datos.v2.backup.db`.
 
 ### Copias automáticas
 
@@ -224,6 +224,7 @@ La aplicación crea una copia consistente de SQLite:
 - en cada arranque, después de abrir y validar la base;
 - antes de importar una competición válida;
 - antes de restaurar otra copia.
+- antes de eliminar un campeonato o retirar una competición de su calendario.
 
 Se conservan las 10 copias de arranque más recientes. Las copias manuales y preventivas no se eliminan automáticamente. Sus carpetas son:
 
@@ -270,7 +271,59 @@ Pulsa **Atajos**, junto a **Panel del tramo**, o `F1` para abrir la referencia d
 
 La selección de pilotos y tramos es circular: al superar el último vuelve al primero, y viceversa. Después de cambiar con `Ctrl` y las flechas, el foco vuelve al campo de tiempo para continuar escribiendo sin usar el ratón.
 
-## 16. CLI heredada
+## 16. Campeonatos
+
+Pulsa **Campeonatos** en el panel izquierdo para abrir el gestor. Un campeonato tiene un nombre, un plantel oficial, un calendario ordenado, una tabla de puntos por posición y un bonus opcional para quien consiga más victorias de tramo en cada prueba.
+
+### Crear y configurar
+
+1. Pulsa **Nuevo campeonato**.
+2. Escribe un nombre y añade un piloto oficial por línea. Los nombres no pueden repetirse.
+3. Revisa los puntos por posición. El valor inicial es `25,18,15,12,10,8,6,4,2,1`.
+4. Define el bonus por victorias de tramo. Usa `0` para desactivarlo.
+
+Desde **Configuración** puedes cambiar posteriormente la puntuación, el bonus o marcar manualmente el campeonato como finalizado. Los cambios recalculan la clasificación sin modificar los resultados originales.
+
+### Calendario y participantes
+
+En la pestaña **Calendario** puedes:
+
+- añadir una competición existente, incluso si ya pertenece a otro campeonato;
+- crear una competición específica, que recibe automáticamente todos los pilotos activos del campeonato;
+- indicar o corregir su fecha;
+- mover una prueba hacia arriba o abajo en cualquier momento;
+- retirarla del calendario sin borrar la competición.
+
+Al vincular una competición existente debes asociar cada piloto oficial activo con uno de sus participantes. Los participantes no asociados se consideran invitados: aparecen en la competición, pero no reciben posición ni puntos del campeonato. Una asociación nueva queda guardada como alias para facilitar pruebas posteriores.
+
+Una competición vinculada a algún campeonato no se puede borrar. Primero debes retirarla de todos sus calendarios. Borrar un campeonato no borra sus competiciones y ambas operaciones crean antes una copia preventiva de la base.
+
+### Estados y puntuación
+
+El calendario muestra automáticamente cada prueba como **Planificada**, **En curso** o **Finalizada** según sus resultados. Solo una prueba finalizada aporta puntos oficiales; mientras está en curso se muestra en el calendario pero aporta cero puntos.
+
+Las reglas del campeonato son:
+
+- los invitados se excluyen antes de calcular posiciones;
+- un piloto retirado conserva su posición, sus puntos y el posible bonus;
+- un no presentado o descalificado recibe cero puntos;
+- un `NF` de tramo no impide puntuar en la clasificación del rally;
+- si varios pilotos empatan en el rally, comparten puntos y se salta la posición siguiente;
+- cada victoria de tramo cuenta también en caso de empate exacto de tiempo;
+- el mayor número de victorias de tramo concede el bonus completo a todos los empatados;
+- un descalificado no puede recibir el bonus; se concede al siguiente máximo válido.
+
+La clasificación general desempata por número de victorias de rally, segundos puestos, terceros puestos y, finalmente, el mejor resultado en la prueba más reciente. Se muestran también podios, victorias de tramo, retiradas, puntos por prueba y diferencia con el líder.
+
+### Bajas y reincorporaciones
+
+En **Pilotos** puedes retirar un piloto desde una prueba concreta. Conserva todos sus puntos anteriores y recibe cero en las pruebas que no dispute. Puede reincorporarse desde otra prueba si figura —por nombre o alias— entre los participantes de esa competición. No se modifican ni eliminan sus resultados previos.
+
+### Exportar
+
+El gestor permite guardar la clasificación del campeonato en CSV, Excel o PDF. El Excel incluye hojas separadas para clasificación, calendario y tabla de puntuación. El PDF está preparado para imprimir. La aplicación no importa campeonatos completos; la importación disponible continúa siendo la de una competición individual.
+
+## 17. CLI heredada
 
 La interfaz de consola usa la misma base y las mismas funciones de persistencia:
 
@@ -280,7 +333,7 @@ python src/cli_main.py
 
 Permite listar, crear y borrar competiciones, ver datos, añadir tiempos, rellenar abandonos y penalizar. Comparte con la GUI las validaciones de competiciones, etapas, participantes, tiempos y penalizaciones. Está orientada a Windows porque limpia la pantalla con `cls`; una opción de menú no numérica todavía puede cerrar el programa con un error. Para operación normal se recomienda la interfaz gráfica.
 
-## 17. Mensajes frecuentes
+## 18. Mensajes frecuentes
 
 | Mensaje | Acción recomendada |
 | --- | --- |

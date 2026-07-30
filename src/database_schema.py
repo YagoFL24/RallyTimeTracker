@@ -4,7 +4,7 @@ import sqlite3
 from pathlib import Path
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 MAX_SQLITE_INTEGER = (2**63) - 1
 MAX_NAME_LENGTH = 255
 RESULT_STATUSES = ("pending", "finished", "stage_dnf", "dns", "dsq")
@@ -15,6 +15,10 @@ REQUIRED_OBJECTS = {
     "idx_results_stage",
     "validate_result_stage_insert",
     "validate_result_stage_update",
+    "idx_championship_events_competition",
+    "idx_championship_event_participants_driver",
+    "validate_championship_event_participant_insert",
+    "validate_championship_event_participant_update",
 }
 
 
@@ -22,7 +26,7 @@ class DatabaseMigrationError(RuntimeError):
     pass
 
 
-SCHEMA_STATEMENTS = (
+CORE_SCHEMA_STATEMENTS = (
     """
     CREATE TABLE competitions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -113,6 +117,140 @@ SCHEMA_STATEMENTS = (
 )
 
 
+CHAMPIONSHIP_SCHEMA_STATEMENTS = (
+    """
+    CREATE TABLE drivers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        official_name TEXT NOT NULL COLLATE NOCASE UNIQUE
+            CHECK(official_name = trim(official_name)
+                  AND length(official_name) BETWEEN 1 AND 255),
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    """
+    CREATE TABLE driver_aliases (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        driver_id INTEGER NOT NULL,
+        alias TEXT NOT NULL COLLATE NOCASE UNIQUE
+            CHECK(alias = trim(alias) AND length(alias) BETWEEN 1 AND 255),
+        FOREIGN KEY(driver_id) REFERENCES drivers(id) ON DELETE CASCADE
+    )
+    """,
+    """
+    CREATE TABLE championships (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        championship_name TEXT NOT NULL COLLATE NOCASE UNIQUE
+            CHECK(championship_name = trim(championship_name)
+                  AND length(championship_name) BETWEEN 1 AND 255),
+        stage_win_bonus INTEGER NOT NULL DEFAULT 5
+            CHECK(typeof(stage_win_bonus) = 'integer' AND stage_win_bonus >= 0),
+        manually_finalized INTEGER NOT NULL DEFAULT 0
+            CHECK(manually_finalized IN (0, 1)),
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    """
+    CREATE TABLE championship_points (
+        championship_id INTEGER NOT NULL,
+        position INTEGER NOT NULL
+            CHECK(typeof(position) = 'integer' AND position > 0),
+        points INTEGER NOT NULL
+            CHECK(typeof(points) = 'integer' AND points >= 0),
+        PRIMARY KEY(championship_id, position),
+        FOREIGN KEY(championship_id) REFERENCES championships(id) ON DELETE CASCADE
+    )
+    """,
+    """
+    CREATE TABLE championship_drivers (
+        championship_id INTEGER NOT NULL,
+        driver_id INTEGER NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active'
+            CHECK(status IN ('active', 'withdrawn')),
+        PRIMARY KEY(championship_id, driver_id),
+        FOREIGN KEY(championship_id) REFERENCES championships(id) ON DELETE CASCADE,
+        FOREIGN KEY(driver_id) REFERENCES drivers(id) ON DELETE RESTRICT
+    )
+    """,
+    """
+    CREATE TABLE championship_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        championship_id INTEGER NOT NULL,
+        competition_id INTEGER NOT NULL,
+        event_order INTEGER NOT NULL
+            CHECK(typeof(event_order) = 'integer' AND event_order > 0),
+        FOREIGN KEY(championship_id) REFERENCES championships(id) ON DELETE CASCADE,
+        FOREIGN KEY(competition_id) REFERENCES competitions(id) ON DELETE RESTRICT,
+        UNIQUE(championship_id, competition_id),
+        UNIQUE(championship_id, event_order)
+    )
+    """,
+    """
+    CREATE TABLE championship_event_participants (
+        event_id INTEGER NOT NULL,
+        driver_id INTEGER NOT NULL,
+        participant_id INTEGER,
+        participates INTEGER NOT NULL DEFAULT 1 CHECK(participates IN (0, 1)),
+        PRIMARY KEY(event_id, driver_id),
+        FOREIGN KEY(event_id) REFERENCES championship_events(id) ON DELETE CASCADE,
+        FOREIGN KEY(driver_id) REFERENCES drivers(id) ON DELETE RESTRICT,
+        FOREIGN KEY(participant_id) REFERENCES participants(id) ON DELETE RESTRICT,
+        UNIQUE(event_id, participant_id),
+        CHECK((participates = 1 AND participant_id IS NOT NULL) OR participates = 0)
+    )
+    """,
+    "CREATE INDEX idx_championship_events_competition "
+    "ON championship_events(competition_id)",
+    "CREATE INDEX idx_championship_event_participants_driver "
+    "ON championship_event_participants(driver_id)",
+    """
+    CREATE TRIGGER validate_championship_event_participant_insert
+    BEFORE INSERT ON championship_event_participants
+    FOR EACH ROW
+    WHEN NOT EXISTS (
+        SELECT 1 FROM championship_events e
+        JOIN championship_drivers d
+          ON d.championship_id = e.championship_id
+         AND d.driver_id = NEW.driver_id
+        WHERE e.id = NEW.event_id
+    ) OR (
+        NEW.participant_id IS NOT NULL AND NOT EXISTS (
+            SELECT 1 FROM championship_events e
+            JOIN participants p ON p.competition_id = e.competition_id
+            WHERE e.id = NEW.event_id AND p.id = NEW.participant_id
+        )
+    )
+    BEGIN
+        SELECT RAISE(ABORT, 'invalid championship event participant');
+    END
+    """,
+    """
+    CREATE TRIGGER validate_championship_event_participant_update
+    BEFORE UPDATE OF event_id, driver_id, participant_id
+    ON championship_event_participants
+    FOR EACH ROW
+    WHEN NOT EXISTS (
+        SELECT 1 FROM championship_events e
+        JOIN championship_drivers d
+          ON d.championship_id = e.championship_id
+         AND d.driver_id = NEW.driver_id
+        WHERE e.id = NEW.event_id
+    ) OR (
+        NEW.participant_id IS NOT NULL AND NOT EXISTS (
+            SELECT 1 FROM championship_events e
+            JOIN participants p ON p.competition_id = e.competition_id
+            WHERE e.id = NEW.event_id AND p.id = NEW.participant_id
+        )
+    )
+    BEGIN
+        SELECT RAISE(ABORT, 'invalid championship event participant');
+    END
+    """,
+)
+
+
+SCHEMA_STATEMENTS = CORE_SCHEMA_STATEMENTS + CHAMPIONSHIP_SCHEMA_STATEMENTS
+
+
 def initialize_database(connection, database_path):
     connection.execute("PRAGMA foreign_keys = ON")
     connection.execute("PRAGMA busy_timeout = 5000")
@@ -122,17 +260,29 @@ def initialize_database(connection, database_path):
     if version == SCHEMA_VERSION:
         _verify_schema(connection)
         return
-    if version not in (0, 1):
+    if version not in (0, 1, 2):
         raise DatabaseMigrationError(
             f"Version SQLite no soportada: {version}; maxima: {SCHEMA_VERSION}."
         )
     if not tables:
         _create_fresh_schema(connection)
         return
+    if version == 2:
+        if not _looks_like_v2_schema(connection):
+            raise DatabaseMigrationError("El esquema SQLite v2 existente no es compatible.")
+        _create_backup(connection, database_path, 2)
+        _migrate_v2_schema(connection)
+        _verify_schema(connection)
+        return
     if _looks_like_current_schema(connection):
         _verify_schema(connection)
         connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
         connection.commit()
+        return
+    if _looks_like_v2_schema(connection):
+        _create_backup(connection, database_path, 2)
+        _migrate_v2_schema(connection)
+        _verify_schema(connection)
         return
     if not _looks_like_legacy_schema(connection):
         raise DatabaseMigrationError("El esquema SQLite existente no es compatible.")
@@ -172,7 +322,7 @@ def _looks_like_legacy_schema(connection):
     )
 
 
-def _looks_like_current_schema(connection):
+def _looks_like_v2_schema(connection):
     tables = _user_tables(connection)
     return (
         {"competitions", "participants", "stage_results", "schema_migration_log"}
@@ -189,8 +339,36 @@ def _looks_like_current_schema(connection):
     )
 
 
+def _looks_like_current_schema(connection):
+    tables = _user_tables(connection)
+    return (
+        _looks_like_v2_schema(connection)
+        and {
+            "drivers",
+            "driver_aliases",
+            "championships",
+            "championship_points",
+            "championship_drivers",
+            "championship_events",
+            "championship_event_participants",
+        }.issubset(tables)
+        and {"id", "official_name"}.issubset(_columns(connection, "drivers"))
+        and {"id", "championship_name", "stage_win_bonus"}.issubset(
+            _columns(connection, "championships")
+        )
+        and {"championship_id", "competition_id", "event_order"}.issubset(
+            _columns(connection, "championship_events")
+        )
+    )
+
+
 def _create_schema_objects(connection):
     for statement in SCHEMA_STATEMENTS:
+        connection.execute(statement)
+
+
+def _create_championship_schema_objects(connection):
+    for statement in CHAMPIONSHIP_SCHEMA_STATEMENTS:
         connection.execute(statement)
 
 
@@ -231,6 +409,19 @@ def _create_backup(connection, database_path, version):
             f"No se pudo crear el backup previo en {backup_path}."
         ) from exc
     return backup_path
+
+
+def _migrate_v2_schema(connection):
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        _create_championship_schema_objects(connection)
+        connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+        connection.commit()
+    except sqlite3.DatabaseError as exc:
+        connection.rollback()
+        raise DatabaseMigrationError(
+            "No se pudo migrar SQLite v2 a v3; se conserva el backup."
+        ) from exc
 
 
 def _migrate_legacy_schema(connection):
@@ -390,7 +581,7 @@ def _log_issue(connection, source, rowid, reason, payload):
 
 def _verify_schema(connection):
     if not _looks_like_current_schema(connection):
-        raise DatabaseMigrationError("El esquema SQLite v2 esta incompleto.")
+        raise DatabaseMigrationError("El esquema SQLite v3 esta incompleto.")
     objects = {
         row[0]
         for row in connection.execute(

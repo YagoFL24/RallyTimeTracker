@@ -13,14 +13,28 @@ MAX_STARTUP_BACKUPS = 10
 BACKUP_PATTERN = re.compile(
     r"^backup_(\d{8})_(\d{6})_(\d{6})_([a-z_]+)\.db$"
 )
-REASONS = {"startup", "manual", "pre_import", "pre_restore"}
+REASONS = {
+    "startup",
+    "manual",
+    "pre_import",
+    "pre_restore",
+    "pre_championship",
+}
 REASON_LABELS = {
     "startup": "Arranque",
     "manual": "Manual",
     "pre_import": "Antes de importar",
     "pre_restore": "Antes de restaurar",
+    "pre_championship": "Antes de modificar campeonato",
 }
-REQUIRED_TABLES = {"competitions", "participants", "stage_results"}
+REQUIRED_TABLES = {
+    "competitions",
+    "participants",
+    "stage_results",
+    "drivers",
+    "championships",
+    "championship_events",
+}
 
 
 class BackupError(RuntimeError):
