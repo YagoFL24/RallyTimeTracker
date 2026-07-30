@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.3.1 - 2026-07-30
+
+- Merge pull request #22 from YagoFL24/feat/tramos-ganados-clasificacion
+- fix: mostrar tramos ganados por participante
 ## v1.3.0 - 2026-07-30
 
 - Merge pull request #21 from YagoFL24/feat/campeonatos
