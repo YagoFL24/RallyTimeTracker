@@ -96,6 +96,8 @@ En ambos formatos:
 
 Por ejemplo, `1:05.25` y `105.25` son válidos y ambos se muestran como `1:05.250`. En cambio, `1:5.250`, `260.5`, `234`, `234.3456` y `0:00.000` se rechazan. La aplicación también comprueba que la etapa sea un entero dentro del rango de la competición y que el participante pertenezca a ella.
 
+El campo se normaliza automáticamente medio segundo después de la última tecla. Los ceros añadidos quedan seleccionados: si escribes `234.3`, verás `2:34.300` con los dos últimos ceros seleccionados, por lo que puedes continuar con `4` o `45` para obtener `.340` o `.345`. Al escribir solo `234.`, se seleccionan los tres ceros añadidos.
+
 ## 6. Rellenar abandonos
 
 Esta operación marca como **No finalizado** a todos los participantes activos que siguen pendientes en una etapa. No los retira del rally: pueden continuar en los tramos posteriores.

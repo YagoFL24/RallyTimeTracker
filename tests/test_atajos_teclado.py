@@ -144,6 +144,14 @@ class ShortcutGuiLogicTests(unittest.TestCase):
             refreshed = False
             prepared = None
 
+            def _normalize_time_entry(self):
+                normalized = self.service.normalize_time_input(
+                    self.add_time_var.get()
+                )
+                if normalized is not None:
+                    self.add_time_var.set(normalized)
+                return normalized
+
             def set_status(self, message, ok):
                 self.status = (message, ok)
 
@@ -161,6 +169,48 @@ class ShortcutGuiLogicTests(unittest.TestCase):
         self.assertEqual(view.status, ("Tiempo guardado.", True))
         self.assertTrue(view.refreshed)
         self.assertEqual(view.prepared, ("Rally", "Ana", 1))
+
+    def test_dynamic_normalization_selects_only_the_added_zeros(self):
+        class Value:
+            def __init__(self, value):
+                self.value = value
+
+            def get(self):
+                return self.value
+
+            def set(self, value):
+                self.value = value
+
+        class Entry:
+            selection = None
+            cursor = None
+
+            def selection_range(self, first, last):
+                self.selection = (first, last)
+
+            def selection_clear(self):
+                self.selection = None
+
+            def icursor(self, index):
+                self.cursor = index
+
+        class FakeView:
+            service = RallyService()
+            add_time_var = Value("234.3")
+            add_time_entry = Entry()
+            _time_normalization_job = "pending"
+
+            def focus_get(self):
+                return self.add_time_entry
+
+        view = FakeView()
+        normalized = RallyApp._apply_dynamic_time_normalization(view)
+
+        self.assertEqual(normalized, "2:34.300")
+        self.assertEqual(view.add_time_var.get(), "2:34.300")
+        self.assertEqual(view.add_time_entry.selection, (6, "end"))
+        self.assertEqual(view.add_time_entry.cursor, 6)
+        self.assertIsNone(view._time_normalization_job)
 
     def test_prepare_next_entry_advances_stage_when_current_is_complete(self):
         class FakeService:

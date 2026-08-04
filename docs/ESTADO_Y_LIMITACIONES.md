@@ -4,7 +4,7 @@
 
 Comprobaciones realizadas durante el desarrollo de la v1.3.0:
 
-- suite de 107 pruebas unitarias y funcionales;
+- suite de 108 pruebas unitarias y funcionales;
 - bases SQLite temporales para todos los flujos de escritura;
 - migración v1 a v2 con backup y conservación de tiempos;
 - migración v2 a v3 con backup y conservación de las competiciones;
