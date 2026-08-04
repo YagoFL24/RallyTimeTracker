@@ -112,6 +112,56 @@ class ShortcutGuiLogicTests(unittest.TestCase):
         self.assertEqual(view.calls, 1)
         self.assertEqual(result, "break")
 
+    def test_saving_compact_time_keeps_the_normalized_value_visible(self):
+        class Value:
+            def __init__(self, value):
+                self.value = value
+
+            def get(self):
+                return self.value
+
+            def set(self, value):
+                self.value = value
+
+        class FakeService:
+            saved_time = None
+
+            @staticmethod
+            def normalize_time_input(value):
+                return "2:34.300" if value == "234.3" else None
+
+            def add_time_str(self, _competition, _participant, _stage, time_text):
+                self.saved_time = time_text
+                return True, "Tiempo guardado."
+
+        class FakeView:
+            current_competition = {"name": "Rally"}
+            add_participant_var = Value("Ana")
+            add_stage_var = Value("1")
+            add_time_var = Value("234.3")
+            service = FakeService()
+            status = None
+            refreshed = False
+            prepared = None
+
+            def set_status(self, message, ok):
+                self.status = (message, ok)
+
+            def on_select_competition(self):
+                self.refreshed = True
+
+            def _prepare_next_time_entry(self, competition, participant, stage):
+                self.prepared = (competition, participant, stage)
+
+        view = FakeView()
+        RallyApp.add_time_clicked(view)
+
+        self.assertEqual(view.service.saved_time, "2:34.300")
+        self.assertEqual(view.add_time_var.get(), "2:34.300")
+        self.assertEqual(view.status, ("Tiempo guardado.", True))
+        self.assertTrue(view.refreshed)
+        self.assertEqual(view.prepared, ("Rally", "Ana", 1))
+
     def test_prepare_next_entry_advances_stage_when_current_is_complete(self):
         class FakeService:
             calls = []

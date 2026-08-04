@@ -288,10 +288,11 @@ class RallyApp(tk.Tk):
         self.add_stage_combo = ttk.Combobox(frame, textvariable=self.add_stage_var, state="readonly")
         self.add_stage_combo.grid(row=1, column=1, sticky="ew", pady=2)
 
-        ttk.Label(frame, text="Tiempo (m:ss.xxx)").grid(row=2, column=0, sticky="w")
+        ttk.Label(frame, text="Tiempo (234.3 o 2:34.300)").grid(row=2, column=0, sticky="w")
         self.add_time_var = tk.StringVar()
         self.add_time_entry = ttk.Entry(frame, textvariable=self.add_time_var)
         self.add_time_entry.grid(row=2, column=1, sticky="ew", pady=2)
+        self.add_time_entry.bind("<FocusOut>", self._normalize_time_entry)
 
         ttk.Button(frame, text="Guardar", command=self.add_time_clicked).grid(
             row=3, column=0, columnspan=2, sticky="ew", pady=(6, 0)
@@ -391,6 +392,12 @@ class RallyApp(tk.Tk):
     def _save_time_shortcut(self, _event=None):
         self.add_time_clicked()
         return "break"
+
+    def _normalize_time_entry(self, _event=None):
+        normalized = self.service.normalize_time_input(self.add_time_var.get())
+        if normalized is not None:
+            self.add_time_var.set(normalized)
+        return normalized
 
     @staticmethod
     def _cycle_combobox(combo, step):
@@ -2009,12 +2016,15 @@ class RallyApp(tk.Tk):
         if not participant or not stage:
             self.set_status("Debe seleccionar participante y etapa.", ok=False)
             return
+        normalized_time = self.service.normalize_time_input(time_str)
+        if normalized_time is not None:
+            self.add_time_var.set(normalized_time)
+            time_str = normalized_time
         ok, msg = self.service.add_time_str(self.current_competition["name"], participant, int(stage), time_str)
         self.set_status(msg, ok=ok)
         if ok:
             competition_name = self.current_competition["name"]
             saved_stage = int(stage)
-            self.add_time_var.set("")
             self.on_select_competition()
             self._prepare_next_time_entry(
                 competition_name, participant, saved_stage

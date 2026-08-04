@@ -4,7 +4,7 @@
 
 Comprobaciones realizadas durante el desarrollo de la v1.3.0:
 
-- suite de 104 pruebas unitarias y funcionales;
+- suite de 107 pruebas unitarias y funcionales;
 - bases SQLite temporales para todos los flujos de escritura;
 - migración v1 a v2 con backup y conservación de tiempos;
 - migración v2 a v3 con backup y conservación de las competiciones;
@@ -23,7 +23,7 @@ La ventana no se ha sometido a automatización gráfica real y el ejecutable tod
 | Área | Estado observado |
 | --- | --- |
 | Alta y borrado de competiciones | Cubiertos con transacciones y cascadas |
-| Tiempo `m:ss.xxx` | Validado en servicio y persistencia |
+| Entrada de tiempo | Formato `m:ss.xxx` o compacto, punto obligatorio y milisegundos autocompletados |
 | Estados de tramo | Pendiente, finalizado, no finalizado, no presentado y descalificado |
 | No finalizado | Aplica peor tiempo + 10 s y mantiene al piloto activo |
 | Retirada del rally | Conserva resultados, bloquea tramos posteriores y permite reactivar |
@@ -73,7 +73,7 @@ Algunos errores de permisos, bloqueo o corrupción SQLite todavía pueden cerrar
 
 ## 5. Precauciones de uso
 
-1. Usa siempre `m:ss.xxx`, con segundos entre `00` y `59`.
+1. Usa `m:ss.xxx` o el formato compacto sin dos puntos; incluye el punto y mantén los segundos entre `00` y `59`.
 2. Conserva el backup v1 o v2 hasta validar manualmente la migración.
 3. No ejecutes dos instancias sobre la misma base.
 4. Ejecuta la suite completa antes de integrar `feat/campeonatos` en `main`.

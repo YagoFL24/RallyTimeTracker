@@ -54,7 +54,7 @@ python src/cli_main.py
 
 1. Pulsa **Nueva** e introduce el nombre, el número de etapas y los participantes.
 2. Selecciona una competición en el panel izquierdo.
-3. En **Agregar tiempo**, escoge participante y etapa, escribe el tiempo como `m:ss.xxx` y pulsa **Guardar**.
+3. En **Agregar tiempo**, escoge participante y etapa, escribe `m:ss.xxx` o el formato rápido sin dos puntos —por ejemplo `234.3`— y pulsa **Guardar**.
 4. Usa **Estado del participante y tramo** para registrar estados o retirar un piloto del rally.
 5. Si varios pilotos no terminan un tramo pero pueden continuar, registra primero un tiempo válido y usa **Rellenar abandonos**.
 6. Para sumar una sanción, escoge piloto, etapa y segundos en **Penalizar**.
