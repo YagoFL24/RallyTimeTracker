@@ -3,6 +3,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -86,6 +87,68 @@ class StageDashboardTests(unittest.TestCase):
         dashboard = self.service.get_stage_dashboard("Rally")
         self.assertEqual(dashboard["stage"], 2)
         self.assertEqual(dashboard["counts"]["pending"], 3)
+
+    def test_fill_button_requires_a_base_time_and_pending_participants(self):
+        dashboard = self.service.get_stage_dashboard("Rally", 1)
+        self.assertFalse(RallyApp._dashboard_can_fill_missing(dashboard))
+
+        self.assertTrue(
+            self.service.add_time_str("Rally", "Ana", 1, "1:00.000")[0]
+        )
+        dashboard = self.service.get_stage_dashboard("Rally", 1)
+        self.assertTrue(RallyApp._dashboard_can_fill_missing(dashboard))
+
+        self.assertTrue(self.service.fill_missing_times("Rally", 1)[0])
+        dashboard = self.service.get_stage_dashboard("Rally", 1)
+        self.assertFalse(RallyApp._dashboard_can_fill_missing(dashboard))
+
+    def test_fill_button_uses_the_stage_displayed_in_the_dashboard(self):
+        class Value:
+            def get(self):
+                return "2"
+
+        class FakeService:
+            fill_calls = []
+
+            @staticmethod
+            def get_stage_dashboard(competition, stage):
+                if (competition, stage) != ("Rally", 2):
+                    return None
+                return {
+                    "counts": {"pending": 2},
+                    "rows": [
+                        {"time_ms": 60_000},
+                        {"time_ms": None},
+                        {"time_ms": None},
+                    ],
+                }
+
+            def fill_missing_times(self, competition, stage):
+                self.fill_calls.append((competition, stage))
+                return True, "Abandonos rellenados."
+
+        class View:
+            current_competition = {"name": "Rally"}
+            dashboard_stage_var = Value()
+            dashboard_window = object()
+            service = FakeService()
+            status = None
+            refreshed = False
+
+            def set_status(self, message, ok):
+                self.status = (message, ok)
+
+            def on_select_competition(self):
+                self.refreshed = True
+
+        view = View()
+        with patch("gui_tk.messagebox.askyesno", return_value=True) as confirm:
+            RallyApp._fill_missing_from_dashboard(view)
+
+        self.assertEqual(view.service.fill_calls, [("Rally", 2)])
+        self.assertEqual(view.status, ("Abandonos rellenados.", True))
+        self.assertTrue(view.refreshed)
+        confirm.assert_called_once()
 
     def test_rejects_unknown_competition_or_stage(self):
         self.assertIsNone(self.service.get_stage_dashboard("No existe"))

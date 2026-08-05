@@ -256,6 +256,8 @@ La copia de arranque se solicita desde `RallyApp` después de cargar la base. `R
 
 `RallyApp` presenta el resumen en un `Toplevel`. Por defecto consulta de nuevo el tramo actual después de cada acción; el usuario puede desactivar el seguimiento para fijar otro tramo. La selección de una fila copia piloto y tramo a los formularios existentes, por lo que el panel no duplica operaciones de escritura ni reglas de validación.
 
+El botón de abandonos del panel toma el tramo visible, comprueba que haya tiempo base y pendientes activos, solicita confirmación y reutiliza `RallyService.fill_missing_times`. La recarga posterior conserva un tramo fijado manualmente o avanza si continúa activo el seguimiento automático.
+
 ### Introducción rápida por teclado
 
 `RallyApp._bind_keyboard_shortcuts` registra los atajos únicamente en la ventana principal. Todos reutilizan los controles y acciones existentes: `Enter` y `Ctrl+Enter` llaman a `add_time_clicked`, las flechas cambian los mismos `Combobox` y `Ctrl+P` abre el panel operativo.

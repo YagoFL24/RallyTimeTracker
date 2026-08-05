@@ -170,6 +170,8 @@ Selecciona una competición y pulsa **Panel del tramo**, situado junto al encabe
 
 El panel sigue automáticamente el tramo actual, entendido como el primero que todavía tiene resultados pendientes para pilotos activos. Cuando completas ese tramo, avanza al siguiente después de refrescar los datos. Para revisar otro tramo, desmarca **Seguir tramo actual** y selecciónalo en el desplegable; **Ir al actual** recupera el seguimiento automático.
 
+El botón **Rellenar abandonos** aplica la operación directamente al tramo mostrado en el panel. Solo se habilita cuando existe al menos un tiempo base y queda algún piloto activo pendiente. Antes de continuar muestra cuántos participantes pasarán a `NF`; al confirmar, les asigna el peor tiempo registrado más 10 segundos y refresca la clasificación y el panel.
+
 Los contadores muestran total de pilotos, pendientes activos, finalizados, NF, NP, DSQ y resultados modificados. La tabla sitúa primero los pendientes y utiliza estos avisos visuales:
 
 - pendiente: requiere introducir un resultado;
