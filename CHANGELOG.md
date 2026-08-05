@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.3.3 - 2026-08-05
+
+- Merge pull request #24 from YagoFL24/fix/rellenar-abandonos-panel-tramo
+- fix: aÃ±adir rellenado de abandonos al panel del tramo
 ## v1.3.2 - 2026-08-05
 
 - Merge pull request #23 from YagoFL24/fix/entrada-tiempo-automatica
