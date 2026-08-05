@@ -212,7 +212,9 @@ La competición y sus participantes se confirman en una única transacción. Una
 
 ### Registrar tiempo
 
-`RallyService.add_time_str` exige `m:ss.xxx`, segundos entre `00` y `59`, tres milisegundos y duración positiva. `persistencia.add_time` actualiza la fila única participante/tramo a `finished`, conserva el valor anterior e incrementa el contador cuando corrige un resultado ya resuelto.
+`RallyService.add_time_str` acepta `m:ss.xxx` y la notación compacta `mmss.xxx`. El punto es obligatorio, los segundos deben estar entre `00` y `59` y de cero a tres decimales se completan por la derecha. `gestorTiempos.normalizar_tiempo` produce siempre `m:ss.xxx`. `persistencia.add_time` actualiza la fila única participante/tramo a `finished`, conserva el valor anterior e incrementa el contador cuando corrige un resultado ya resuelto.
+
+La entrada principal programa la normalización 500 ms después de la última tecla editable. Al completar milisegundos selecciona únicamente los ceros añadidos para permitir que el usuario continúe escribiendo sin corregir el cursor. Perder el foco o guardar cancela la tarea pendiente y normaliza inmediatamente.
 
 Las operaciones de abandonos y penalizaciones utilizan el mismo límite de validación. Una llamada directa a persistencia no puede guardar un tiempo decimal, nulo, negativo, fuera de rango o asociado a un participante desconocido.
 

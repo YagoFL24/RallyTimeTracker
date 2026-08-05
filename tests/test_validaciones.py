@@ -10,7 +10,7 @@ SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from gestorTiempos import tiempo_a_milisegundos
+from gestorTiempos import normalizar_tiempo, tiempo_a_milisegundos
 from persistencia import (
     add_competition,
     add_time,
@@ -40,23 +40,50 @@ class TimeParsingTests(unittest.TestCase):
             "0:00.001": 1,
             "0:59.999": 59_999,
             "1:05.250": 65_250,
+            "1:05.2": 65_200,
+            "1:05.25": 65_250,
             "123:59.999": 7_439_999,
         }
         for value, expected in valid_times.items():
             with self.subTest(value=value):
                 self.assertEqual(tiempo_a_milisegundos(value), expected)
 
+    def test_accepts_and_normalizes_compact_time_format(self):
+        valid_times = {
+            "234.345": (154_345, "2:34.345"),
+            "234.3": (154_300, "2:34.300"),
+            "234.34": (154_340, "2:34.340"),
+            "234.": (154_000, "2:34.000"),
+            "34.5": (34_500, "0:34.500"),
+            "4.007": (4_007, "0:04.007"),
+            "204.09": (124_090, "2:04.090"),
+            "1205.1": (725_100, "12:05.100"),
+            "123.4": (83_400, "1:23.400"),
+        }
+        for value, (expected_ms, expected_text) in valid_times.items():
+            with self.subTest(value=value):
+                self.assertEqual(tiempo_a_milisegundos(value), expected_ms)
+                self.assertEqual(normalizar_tiempo(value), expected_text)
+
+    def test_normalizes_traditional_format_with_incomplete_milliseconds(self):
+        self.assertEqual(normalizar_tiempo("2:34."), "2:34.000")
+        self.assertEqual(normalizar_tiempo("2:34.3"), "2:34.300")
+        self.assertEqual(normalizar_tiempo("2:34.34"), "2:34.340")
+
     def test_rejects_invalid_or_ambiguous_times(self):
         invalid_times = (
             None,
             "",
             "0:00.000",
+            "0:00.",
             "1:5.000",
             "1:60.000",
             "1:75.000",
             "1:05",
-            "1:05.00",
             "1:05.0000",
+            "234",
+            "260.5",
+            "234.3456",
             "-1:05.000",
             "1:05,000",
             "abc",

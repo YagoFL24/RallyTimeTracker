@@ -11,6 +11,7 @@ from copias_seguridad import (
 from gestorTiempos import (
     MAX_SQLITE_INTEGER,
     milisegundos_a_tiempo,
+    normalizar_tiempo,
     tiempo_a_milisegundos,
 )
 from intercambio import (
@@ -880,8 +881,9 @@ class RallyService:
             time_ms = tiempo_a_milisegundos(time_str)
         except (TypeError, ValueError):
             return False, (
-                "Formato de tiempo invalido. Use m:ss.xxx, con segundos "
-                "entre 00 y 59 y un valor mayor que cero."
+                "Formato de tiempo invalido. Use m:ss.xxx o escriba minutos "
+                "y segundos seguidos, por ejemplo 234.3. El punto es "
+                "obligatorio y los segundos deben estar entre 00 y 59."
             )
         ok = add_time(competition[1], time_ms, stage, participant)
         if not ok:
@@ -918,7 +920,10 @@ class RallyService:
             try:
                 time_ms = tiempo_a_milisegundos(time_str.strip())
             except (TypeError, ValueError):
-                return False, "Formato de tiempo invalido. Use m:ss.xxx."
+                return False, (
+                    "Formato de tiempo invalido. Use m:ss.xxx o el formato "
+                    "compacto, por ejemplo 234.3."
+                )
 
         ok = set_stage_status(
             competition[1], stage, participant, status, time_ms=time_ms
@@ -1238,3 +1243,12 @@ class RallyService:
         if ms is None:
             return "--:--.---"
         return milisegundos_a_tiempo(ms)
+
+    @staticmethod
+    def normalize_time_input(time_text):
+        if not isinstance(time_text, str) or not time_text.strip():
+            return None
+        try:
+            return normalizar_tiempo(time_text.strip())
+        except (TypeError, ValueError):
+            return None

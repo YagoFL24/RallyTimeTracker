@@ -58,7 +58,7 @@ En **Agregar tiempo**:
 
 1. selecciona el participante;
 2. selecciona la etapa;
-3. escribe el tiempo con el formato `m:ss.xxx`;
+3. escribe el tiempo como `m:ss.xxx` o con el formato rápido sin dos puntos;
 4. pulsa **Guardar**.
 
 Ejemplos habituales:
@@ -68,23 +68,35 @@ Ejemplos habituales:
 | `0:42.315` | 42 segundos y 315 milisegundos |
 | `1:05.000` | 1 minuto y 5 segundos |
 | `12:34.987` | 12 minutos, 34 segundos y 987 milisegundos |
+| `234.345` | Se normaliza como `2:34.345` |
+| `234.3` | Se normaliza como `2:34.300` |
+| `34.5` | Se normaliza como `0:34.500` |
 
 Si ya existe un registro para ese participante y etapa, el nuevo valor sustituye al anterior. No hay historial ni botón para deshacer la corrección.
 
-Después de guardar, la tabla se vuelve a cargar y el campo de tiempo se vacía. La aplicación selecciona el siguiente piloto activo pendiente del mismo tramo. Si ya no queda ninguno, avanza al primer pendiente del tramo actual siguiente. Los retirados y descalificados no forman parte de este recorrido.
+Después de guardar, la tabla se vuelve a cargar y el campo conserva el tiempo normalizado, seleccionado por completo para sustituirlo directamente al empezar a escribir. La aplicación selecciona el siguiente piloto activo pendiente del mismo tramo. Si ya no queda ninguno, avanza al primer pendiente del tramo actual siguiente. Los retirados y descalificados no forman parte de este recorrido.
 
 La etapa sugerida al seleccionar una competición es la primera que tiene menos registros que participantes. Si todas están completas, se propone la última.
 
 ### Validación del formato y las referencias
 
-El tiempo debe cumplir exactamente `m:ss.xxx`:
+Se aceptan dos formas de introducir el tiempo:
 
-- uno o más dígitos para los minutos;
-- dos dígitos de segundos entre `00` y `59`;
-- exactamente tres dígitos de milisegundos;
+- formato tradicional `m:ss.xxx`, por ejemplo `2:34.345`;
+- formato rápido sin dos puntos, por ejemplo `234.345`, donde los dos últimos dígitos antes del punto son los segundos y los anteriores son los minutos.
+
+En ambos formatos:
+
+- el punto es obligatorio;
+- los segundos deben estar entre `00` y `59`;
+- se admiten entre cero y tres dígitos después del punto;
+- los decimales omitidos se completan con ceros por la derecha: `.3` pasa a `.300`, `.34` a `.340` y `.` a `.000`;
+- más de tres decimales y la coma se rechazan;
 - duración total mayor que cero.
 
-Por ejemplo, `1:05.250` es válido; `1:5.250`, `1:75.000`, `1:05.25` y `0:00.000` se rechazan. La aplicación también comprueba que la etapa sea un entero dentro del rango de la competición y que el participante pertenezca a ella.
+Por ejemplo, `1:05.25` y `105.25` son válidos y ambos se muestran como `1:05.250`. En cambio, `1:5.250`, `260.5`, `234`, `234.3456` y `0:00.000` se rechazan. La aplicación también comprueba que la etapa sea un entero dentro del rango de la competición y que el participante pertenezca a ella.
+
+El campo se normaliza automáticamente medio segundo después de la última tecla. Los ceros añadidos quedan seleccionados: si escribes `234.3`, verás `2:34.300` con los dos últimos ceros seleccionados, por lo que puedes continuar con `4` o `45` para obtener `.340` o `.345`. Al escribir solo `234.`, se seleccionan los tres ceros añadidos.
 
 ## 6. Rellenar abandonos
 
@@ -341,7 +353,7 @@ Permite listar, crear y borrar competiciones, ver datos, añadir tiempos, rellen
 | Mensaje | Acción recomendada |
 | --- | --- |
 | `Seleccione una competicion.` | Elige una entrada en el panel izquierdo. |
-| `Formato de tiempo invalido. Use m:ss.xxx` | Usa dos partes separadas por `:`, por ejemplo `1:05.240`. |
+| `Formato de tiempo invalido` | Usa `1:05.240` o el formato rápido `105.24`; incluye siempre el punto. |
 | `No hay tiempos base para esa etapa.` | Registra al menos un tiempo antes de rellenar abandonos. |
 | `No existe tiempo para ese participante/etapa.` | Guarda primero el tiempo del participante en ese tramo. |
 | `Ya existe una competicion con ese nombre.` | Usa un nombre distinto o elimina la competición anterior. |

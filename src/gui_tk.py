@@ -33,6 +33,7 @@ class RallyApp(tk.Tk):
         self.championship_calendar_tree = None
         self.championship_drivers_tree = None
         self.current_championship = None
+        self._time_normalization_job = None
 
         self.title("Rally Time Tracker")
         self.geometry("1100x650")
@@ -288,10 +289,16 @@ class RallyApp(tk.Tk):
         self.add_stage_combo = ttk.Combobox(frame, textvariable=self.add_stage_var, state="readonly")
         self.add_stage_combo.grid(row=1, column=1, sticky="ew", pady=2)
 
-        ttk.Label(frame, text="Tiempo (m:ss.xxx)").grid(row=2, column=0, sticky="w")
+        ttk.Label(frame, text="Tiempo (234.3 o 2:34.300)").grid(row=2, column=0, sticky="w")
         self.add_time_var = tk.StringVar()
         self.add_time_entry = ttk.Entry(frame, textvariable=self.add_time_var)
         self.add_time_entry.grid(row=2, column=1, sticky="ew", pady=2)
+        self.add_time_entry.bind("<FocusOut>", self._normalize_time_entry)
+        self.add_time_entry.bind("<KeyRelease>", self._on_time_entry_key_release)
+        self.add_time_entry.bind(
+            "<<Paste>>",
+            lambda _event: self.after_idle(self._schedule_time_normalization),
+        )
 
         ttk.Button(frame, text="Guardar", command=self.add_time_clicked).grid(
             row=3, column=0, columnspan=2, sticky="ew", pady=(6, 0)
@@ -391,6 +398,57 @@ class RallyApp(tk.Tk):
     def _save_time_shortcut(self, _event=None):
         self.add_time_clicked()
         return "break"
+
+    def _on_time_entry_key_release(self, event):
+        is_edit_key = (
+            event.keysym in ("BackSpace", "Delete")
+            or event.char.isdigit()
+            or event.char in (".", ":")
+        )
+        if is_edit_key:
+            self._schedule_time_normalization()
+
+    def _schedule_time_normalization(self):
+        self._cancel_time_normalization()
+        self._time_normalization_job = self.after(
+            500, self._apply_dynamic_time_normalization
+        )
+
+    def _cancel_time_normalization(self):
+        if self._time_normalization_job is None:
+            return
+        try:
+            self.after_cancel(self._time_normalization_job)
+        except (tk.TclError, ValueError):
+            pass
+        self._time_normalization_job = None
+
+    def _apply_dynamic_time_normalization(self):
+        self._time_normalization_job = None
+        original = self.add_time_var.get().strip()
+        normalized = self.service.normalize_time_input(original)
+        if normalized is None:
+            return None
+
+        decimal_count = len(original.rsplit(".", 1)[1])
+        padding = 3 - decimal_count
+        self.add_time_var.set(normalized)
+        if self.focus_get() == self.add_time_entry:
+            if padding > 0:
+                padding_start = len(normalized) - padding
+                self.add_time_entry.selection_range(padding_start, tk.END)
+                self.add_time_entry.icursor(padding_start)
+            else:
+                self.add_time_entry.selection_clear()
+                self.add_time_entry.icursor(tk.END)
+        return normalized
+
+    def _normalize_time_entry(self, _event=None):
+        self._cancel_time_normalization()
+        normalized = self.service.normalize_time_input(self.add_time_var.get())
+        if normalized is not None:
+            self.add_time_var.set(normalized)
+        return normalized
 
     @staticmethod
     def _cycle_combobox(combo, step):
@@ -2009,12 +2067,14 @@ class RallyApp(tk.Tk):
         if not participant or not stage:
             self.set_status("Debe seleccionar participante y etapa.", ok=False)
             return
+        normalized_time = self._normalize_time_entry()
+        if normalized_time is not None:
+            time_str = normalized_time
         ok, msg = self.service.add_time_str(self.current_competition["name"], participant, int(stage), time_str)
         self.set_status(msg, ok=ok)
         if ok:
             competition_name = self.current_competition["name"]
             saved_stage = int(stage)
-            self.add_time_var.set("")
             self.on_select_competition()
             self._prepare_next_time_entry(
                 competition_name, participant, saved_stage
