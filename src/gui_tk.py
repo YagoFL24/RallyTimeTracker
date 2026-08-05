@@ -22,6 +22,7 @@ class RallyApp(tk.Tk):
         self._theme_text_widgets = []
         self.dashboard_window = None
         self.dashboard_tree = None
+        self.dashboard_fill_button = None
         self.dashboard_competition_name = None
         self._dashboard_rows_by_participant = {}
         self.backup_window = None
@@ -1674,6 +1675,13 @@ class RallyApp(tk.Tk):
         ttk.Button(
             controls, text="Ir al actual", command=self._go_to_current_stage
         ).grid(row=0, column=3, padx=(0, 10))
+        self.dashboard_fill_button = ttk.Button(
+            controls,
+            text="Rellenar abandonos",
+            command=self._fill_missing_from_dashboard,
+            state="disabled",
+        )
+        self.dashboard_fill_button.grid(row=0, column=4, padx=(0, 10))
         ttk.Label(
             controls,
             text="Doble clic para cargar el piloto en los formularios",
@@ -1757,6 +1765,7 @@ class RallyApp(tk.Tk):
         if event.widget is self.dashboard_window:
             self.dashboard_window = None
             self.dashboard_tree = None
+            self.dashboard_fill_button = None
             self.dashboard_competition_name = None
             self._dashboard_rows_by_participant = {}
 
@@ -1764,6 +1773,7 @@ class RallyApp(tk.Tk):
         window = self.dashboard_window
         self.dashboard_window = None
         self.dashboard_tree = None
+        self.dashboard_fill_button = None
         self.dashboard_competition_name = None
         self._dashboard_rows_by_participant = {}
         if window is not None and window.winfo_exists():
@@ -1776,6 +1786,51 @@ class RallyApp(tk.Tk):
     def _go_to_current_stage(self):
         self.dashboard_follow_var.set(True)
         self._refresh_stage_dashboard(reset_stage=True)
+
+    @staticmethod
+    def _dashboard_can_fill_missing(dashboard):
+        return (
+            dashboard is not None
+            and dashboard["counts"]["pending"] > 0
+            and any(row["time_ms"] is not None for row in dashboard["rows"])
+        )
+
+    def _fill_missing_from_dashboard(self):
+        if not self.current_competition:
+            self.set_status("Seleccione una competicion.", ok=False)
+            return
+        try:
+            stage = int(self.dashboard_stage_var.get())
+        except (TypeError, ValueError):
+            self.set_status("Seleccione un tramo valido en el panel.", ok=False)
+            return
+
+        competition_name = self.current_competition["name"]
+        dashboard = self.service.get_stage_dashboard(competition_name, stage)
+        if dashboard is None:
+            self.set_status("No se pudo cargar el tramo del panel.", ok=False)
+            return
+        pending = dashboard["counts"]["pending"]
+        if pending <= 0:
+            self.set_status("No hay participantes pendientes en ese tramo.", ok=False)
+            return
+        if not any(row["time_ms"] is not None for row in dashboard["rows"]):
+            self.set_status("No hay tiempos base para ese tramo.", ok=False)
+            return
+        if not messagebox.askyesno(
+            "Rellenar abandonos",
+            f"Se marcaran como NF {pending} participante(s) pendiente(s) "
+            f"del tramo {stage}.\n\n"
+            "Se asignara el peor tiempo registrado mas 10 segundos. "
+            "¿Continuar?",
+            parent=self.dashboard_window,
+        ):
+            return
+
+        ok, message = self.service.fill_missing_times(competition_name, stage)
+        self.set_status(message, ok=ok)
+        if ok:
+            self.on_select_competition()
 
     # Recarga contadores y filas; se invoca también después de cada acción.
     def _refresh_stage_dashboard(self, reset_stage=False):
@@ -1807,6 +1862,14 @@ class RallyApp(tk.Tk):
         self.dashboard_stage_combo.set(str(dashboard["stage"]))
         for key, variable in self.dashboard_summary_vars.items():
             variable.set(str(dashboard["counts"][key]))
+        if self.dashboard_fill_button is not None:
+            self.dashboard_fill_button.config(
+                state=(
+                    "normal"
+                    if self._dashboard_can_fill_missing(dashboard)
+                    else "disabled"
+                )
+            )
         self.dashboard_tree.delete(*self.dashboard_tree.get_children())
         self._dashboard_rows_by_participant = {
             row["participant"]: row for row in dashboard["rows"]
