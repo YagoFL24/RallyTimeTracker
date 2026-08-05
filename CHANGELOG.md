@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.3.2 - 2026-08-05
+
+- Merge pull request #23 from YagoFL24/fix/entrada-tiempo-automatica
+- fix: normalizar dinÃ¡micamente la entrada de tiempos
+- fix: permitir entrada automÃ¡tica de tiempos
 ## v1.3.1 - 2026-07-30
 
 - Merge pull request #22 from YagoFL24/feat/tramos-ganados-clasificacion
