@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.3.4 - 2026-08-15
+
+- Merge pull request #25 from YagoFL24/fix/rellenar-abandonos-panel-tramo
+- fix: mantener Piloto y Dif. visibles durante el scroll horizontal
 ## v1.3.3 - 2026-08-05
 
 - Merge pull request #24 from YagoFL24/fix/rellenar-abandonos-panel-tramo
