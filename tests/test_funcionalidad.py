@@ -329,6 +329,100 @@ class FakeLabel:
 
 
 class GuiLogicTests(unittest.TestCase):
+    def test_participant_overlay_appears_when_column_reaches_left_edge(self):
+        total_width = 2975
+        rank_width = 110
+        self.assertFalse(
+            RallyApp._should_show_participant_overlay(
+                0.0, total_width, rank_width
+            )
+        )
+        self.assertFalse(
+            RallyApp._should_show_participant_overlay(
+                109 / total_width, total_width, rank_width
+            )
+        )
+        self.assertTrue(
+            RallyApp._should_show_participant_overlay(
+                110 / total_width, total_width, rank_width
+            )
+        )
+        self.assertTrue(
+            RallyApp._should_show_participant_overlay(
+                0.5, total_width, rank_width
+            )
+        )
+
+    def test_diff_overlay_is_visible_until_horizontal_scroll_reaches_end(self):
+        self.assertTrue(RallyApp._should_show_diff_overlay(0.0, 0.25))
+        self.assertTrue(RallyApp._should_show_diff_overlay(0.45, 0.70))
+        self.assertFalse(RallyApp._should_show_diff_overlay(0.75, 0.9999995))
+        self.assertFalse(RallyApp._should_show_diff_overlay(0.75, 1.0))
+        self.assertFalse(RallyApp._should_show_diff_overlay(0.0, 1.0))
+
+    def test_diff_overlay_synchronizes_vertical_scroll_and_selection(self):
+        class FakeTree:
+            def __init__(self, selected=(), focused=""):
+                self.selected = list(selected)
+                self.focused = focused
+                self.vertical_position = None
+
+            def yview_moveto(self, position):
+                self.vertical_position = position
+
+            def selection(self):
+                return tuple(self.selected)
+
+            def selection_remove(self, items):
+                self.selected = [item for item in self.selected if item not in items]
+
+            def selection_set(self, items):
+                self.selected = list(items)
+
+            @staticmethod
+            def exists(item):
+                return item in {"row_1", "row_2"}
+
+            def focus(self, item=None):
+                if item is not None:
+                    self.focused = item
+                return self.focused
+
+        class FakeScrollbar:
+            def set(self, first, last):
+                self.position = (first, last)
+
+        main_tree = FakeTree(selected=("row_2",), focused="row_2")
+        participant_tree = FakeTree(selected=("row_1",), focused="row_1")
+        diff_tree = FakeTree(selected=("row_1",), focused="row_1")
+
+        view = mock.Mock()
+        view.tree = main_tree
+        view.participant_tree = participant_tree
+        view.diff_tree = diff_tree
+        view._table_v_scrollbar = FakeScrollbar()
+        view._syncing_table_scroll = False
+        view._syncing_table_selection = False
+        RallyApp._on_table_yscroll(view, "0.4", "0.8")
+        RallyApp._sync_table_selection(
+            view, mock.Mock(widget=main_tree)
+        )
+
+        self.assertEqual(view._table_v_scrollbar.position, ("0.4", "0.8"))
+        self.assertEqual(participant_tree.vertical_position, "0.4")
+        self.assertEqual(diff_tree.vertical_position, "0.4")
+        self.assertEqual(participant_tree.selection(), ("row_2",))
+        self.assertEqual(participant_tree.focus(), "row_2")
+        self.assertEqual(diff_tree.selection(), ("row_2",))
+        self.assertEqual(diff_tree.focus(), "row_2")
+
+        participant_tree.vertical_position = "0.6"
+        RallyApp._on_floating_table_yscroll(
+            view, participant_tree, "0.6", "0.9"
+        )
+        self.assertEqual(main_tree.vertical_position, "0.6")
+        self.assertEqual(diff_tree.vertical_position, "0.6")
+
     def test_delete_clears_stale_selection_table_and_action_controls(self):
         class FakeService:
             def __init__(self):
@@ -413,6 +507,11 @@ class GuiLogicTests(unittest.TestCase):
         RallyApp.sort_by_column(view, "total", 2)
         self.assertEqual(
             [row["total"] for row in view.sorted_rows], [120, 125, 130]
+        )
+        RallyApp.sort_by_column(view, "diff", 2)
+        self.assertEqual(
+            [row["participant"] for row in view.sorted_rows],
+            ["ana", "Marta", "Luis"],
         )
         RallyApp.sort_by_column(view, "stage_wins", 2)
         self.assertEqual(
