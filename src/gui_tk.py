@@ -200,6 +200,15 @@ class RallyApp(tk.Tk):
         self.table_frame.rowconfigure(0, weight=1)
 
         self.tree = None
+        self.participant_tree = None
+        self.participant_overlay = None
+        self.diff_tree = None
+        self.diff_overlay = None
+        self._table_v_scrollbar = None
+        self._table_h_scrollbar = None
+        self._syncing_table_scroll = False
+        self._syncing_table_selection = False
+        self._floating_columns_refresh_job = None
 
         self._build_actions(panel)
 
@@ -1977,12 +1986,9 @@ class RallyApp(tk.Tk):
         columns = ["rank", "participant", "status"] + [f"stage_{i}" for i in range(1, stages + 1)] + ["stage_wins", "total", "diff"]
         self.tree = ttk.Treeview(self.table_frame, columns=columns, show="headings", height=16)
         self.tree.grid(row=0, column=0, sticky="nsew")
-        self.tree.bind("<MouseWheel>", self._on_mousewheel)
-        self.tree.bind("<Shift-MouseWheel>", self._on_shift_mousewheel)
-        self.tree.bind("<Button-4>", self._on_mousewheel)
-        self.tree.bind("<Button-5>", self._on_mousewheel)
-        self.tree.bind("<Shift-Button-4>", self._on_shift_mousewheel)
-        self.tree.bind("<Shift-Button-5>", self._on_shift_mousewheel)
+        self._bind_table_scroll_events(self.tree)
+        self.tree.bind("<<TreeviewSelect>>", self._sync_table_selection)
+        self.tree.bind("<Configure>", self._schedule_floating_columns_refresh)
 
         headings = ["Pos", "Piloto", "Estado"] + [f"Tramo {i}" for i in range(1, stages + 1)] + ["Tramos ganados", "General", "Dif."]
         for col, heading in zip(columns, headings):
@@ -1998,12 +2004,241 @@ class RallyApp(tk.Tk):
                 width = 110
             self.tree.column(col, width=width, anchor=anchor, stretch=True)
 
-        v_scrollbar = ttk.Scrollbar(self.table_frame, orient="vertical", command=self.tree.yview)
-        v_scrollbar.grid(row=0, column=1, sticky="ns")
-        h_scrollbar = ttk.Scrollbar(self.table_frame, orient="horizontal", command=self.tree.xview)
-        h_scrollbar.grid(row=1, column=0, sticky="ew")
+        self._table_v_scrollbar = ttk.Scrollbar(
+            self.table_frame,
+            orient="vertical",
+            command=self._on_table_yview,
+        )
+        self._table_v_scrollbar.grid(row=0, column=1, sticky="ns")
+        self._table_h_scrollbar = ttk.Scrollbar(
+            self.table_frame,
+            orient="horizontal",
+            command=self.tree.xview,
+        )
+        self._table_h_scrollbar.grid(row=1, column=0, sticky="ew")
 
-        self.tree.config(yscrollcommand=v_scrollbar.set, xscrollcommand=h_scrollbar.set)
+        self.participant_overlay = ttk.Frame(
+            self.table_frame,
+            style="FloatingColumn.TFrame",
+            padding=(0, 0, 2, 0),
+        )
+        self.participant_tree = ttk.Treeview(
+            self.participant_overlay,
+            columns=("participant",),
+            show="headings",
+            height=16,
+        )
+        self.participant_tree.pack(fill="both", expand=True)
+        self.participant_tree.heading(
+            "participant",
+            text="Piloto",
+            command=lambda: self.sort_by_column("participant", stages),
+        )
+        self.participant_tree.column(
+            "participant",
+            width=180,
+            minwidth=180,
+            anchor="w",
+            stretch=False,
+        )
+        self.participant_tree.configure(
+            yscrollcommand=lambda first, last: self._on_floating_table_yscroll(
+                self.participant_tree, first, last
+            )
+        )
+        self._bind_table_scroll_events(self.participant_tree)
+        self.participant_tree.bind(
+            "<<TreeviewSelect>>", self._sync_table_selection
+        )
+
+        self.diff_overlay = ttk.Frame(
+            self.table_frame,
+            style="FloatingColumn.TFrame",
+            padding=(2, 0, 0, 0),
+        )
+        self.diff_tree = ttk.Treeview(
+            self.diff_overlay,
+            columns=("diff",),
+            show="headings",
+            height=16,
+        )
+        self.diff_tree.pack(fill="both", expand=True)
+        self.diff_tree.heading(
+            "diff",
+            text="Dif.",
+            command=lambda: self.sort_by_column("diff", stages),
+        )
+        self.diff_tree.column(
+            "diff",
+            width=120,
+            minwidth=120,
+            anchor="center",
+            stretch=False,
+        )
+        self.diff_tree.configure(
+            yscrollcommand=lambda first, last: self._on_floating_table_yscroll(
+                self.diff_tree, first, last
+            )
+        )
+        self._bind_table_scroll_events(self.diff_tree)
+        self.diff_tree.bind("<<TreeviewSelect>>", self._sync_table_selection)
+
+        self.tree.config(
+            yscrollcommand=self._on_table_yscroll,
+            xscrollcommand=self._on_table_xscroll,
+        )
+        self._schedule_floating_columns_refresh()
+
+    # Vincula la rueda vertical y horizontal a una vista de la tabla.
+    def _bind_table_scroll_events(self, widget):
+        widget.bind("<MouseWheel>", self._on_mousewheel)
+        widget.bind("<Shift-MouseWheel>", self._on_shift_mousewheel)
+        widget.bind("<Button-4>", self._on_mousewheel)
+        widget.bind("<Button-5>", self._on_mousewheel)
+        widget.bind("<Shift-Button-4>", self._on_shift_mousewheel)
+        widget.bind("<Shift-Button-5>", self._on_shift_mousewheel)
+
+    # Desplaza juntas la tabla principal y las columnas flotantes.
+    def _on_table_yview(self, *args):
+        if self.tree is not None:
+            self.tree.yview(*args)
+
+    # Actualiza el scroll vertical y lo replica en las columnas flotantes.
+    def _on_table_yscroll(self, first, last):
+        if self._table_v_scrollbar is not None:
+            self._table_v_scrollbar.set(first, last)
+        if self._syncing_table_scroll:
+            return
+        self._syncing_table_scroll = True
+        try:
+            if self.participant_tree is not None:
+                self.participant_tree.yview_moveto(first)
+            if self.diff_tree is not None:
+                self.diff_tree.yview_moveto(first)
+        finally:
+            self._syncing_table_scroll = False
+
+    # Replica tambien el scroll iniciado con el teclado en una columna flotante.
+    def _on_floating_table_yscroll(self, source, first, _last):
+        if self._syncing_table_scroll:
+            return
+        self._syncing_table_scroll = True
+        try:
+            if self.tree is not None:
+                self.tree.yview_moveto(first)
+            for target in (self.participant_tree, self.diff_tree):
+                if target is not None and target is not source:
+                    target.yview_moveto(first)
+        finally:
+            self._syncing_table_scroll = False
+
+    # Actualiza el scroll horizontal y las dos columnas flotantes.
+    def _on_table_xscroll(self, first, last):
+        if self._table_h_scrollbar is not None:
+            self._table_h_scrollbar.set(first, last)
+        first = float(first)
+        last = float(last)
+        self._set_participant_overlay_visibility(first)
+        self._set_diff_overlay_visibility(first, last)
+
+    @staticmethod
+    def _should_show_participant_overlay(
+        first, total_width, leading_width, tolerance=1e-6
+    ):
+        return first * total_width >= leading_width - tolerance
+
+    @staticmethod
+    def _should_show_diff_overlay(first, last, tolerance=1e-6):
+        return last < 1.0 - tolerance
+
+    # Fija Piloto al borde izquierdo cuando alcanza esa posicion al desplazarse.
+    def _set_participant_overlay_visibility(self, first):
+        if self.participant_overlay is None or self.tree is None:
+            return
+        columns = self.tree["columns"]
+        total_width = sum(
+            int(self.tree.column(column, "width")) for column in columns
+        )
+        leading_width = int(self.tree.column("rank", "width"))
+        if self._should_show_participant_overlay(
+            first, total_width, leading_width
+        ):
+            self.participant_overlay.place(
+                in_=self.tree,
+                x=0,
+                y=0,
+                width=182,
+                relheight=1.0,
+            )
+            self.participant_overlay.lift()
+        else:
+            self.participant_overlay.place_forget()
+
+    # Muestra Dif. sobre la tabla hasta alcanzar su posicion real a la derecha.
+    def _set_diff_overlay_visibility(self, first, last):
+        if self.diff_overlay is None or self.tree is None:
+            return
+        if self._should_show_diff_overlay(first, last):
+            self.diff_overlay.place(
+                in_=self.tree,
+                relx=1.0,
+                x=-122,
+                y=0,
+                width=122,
+                relheight=1.0,
+            )
+            self.diff_overlay.lift()
+        else:
+            self.diff_overlay.place_forget()
+
+    # Recalcula las superposiciones tras crear o redimensionar la tabla.
+    def _schedule_floating_columns_refresh(self, _event=None):
+        if self._floating_columns_refresh_job is not None:
+            try:
+                self.after_cancel(self._floating_columns_refresh_job)
+            except tk.TclError:
+                pass
+        self._floating_columns_refresh_job = self.after_idle(
+            self._refresh_floating_columns
+        )
+
+    def _refresh_floating_columns(self):
+        self._floating_columns_refresh_job = None
+        if self.tree is None:
+            return
+        first, last = self.tree.xview()
+        self._set_participant_overlay_visibility(first)
+        self._set_diff_overlay_visibility(first, last)
+
+    # Mantiene la seleccion de fila igual en las tres vistas de la tabla.
+    def _sync_table_selection(self, event):
+        if self._syncing_table_selection:
+            return
+        source = event.widget
+        trees = (self.tree, self.participant_tree, self.diff_tree)
+        if source not in trees:
+            return
+        targets = [tree for tree in trees if tree is not None and tree is not source]
+
+        self._syncing_table_selection = True
+        try:
+            focused = source.focus()
+            for target in targets:
+                selected = [
+                    item for item in source.selection() if target.exists(item)
+                ]
+                if list(target.selection()) != selected:
+                    target.selection_remove(target.selection())
+                    if selected:
+                        target.selection_set(selected)
+                if (
+                    focused
+                    and target.exists(focused)
+                    and target.focus() != focused
+                ):
+                    target.focus(focused)
+        finally:
+            self._syncing_table_selection = False
 
     # Maneja scroll vertical con rueda.
     def _on_mousewheel(self, event):
@@ -2028,7 +2263,11 @@ class RallyApp(tk.Tk):
         if self.tree is None:
             return
         self.tree.delete(*self.tree.get_children())
-        for row in rows:
+        if self.participant_tree is not None:
+            self.participant_tree.delete(*self.participant_tree.get_children())
+        if self.diff_tree is not None:
+            self.diff_tree.delete(*self.diff_tree.get_children())
+        for index, row in enumerate(rows):
             rank = row["rank"]
             if row["diff"] is None:
                 diff_text = "-"
@@ -2046,7 +2285,21 @@ class RallyApp(tk.Tk):
                 self.service.format_time(row["total"]),
                 diff_text,
             ]
-            self.tree.insert("", tk.END, values=values)
+            item_id = f"row_{index}"
+            self.tree.insert("", tk.END, iid=item_id, values=values)
+            if self.participant_tree is not None:
+                self.participant_tree.insert(
+                    "", tk.END, iid=item_id, values=(row["participant"],)
+                )
+            if self.diff_tree is not None:
+                self.diff_tree.insert(
+                    "", tk.END, iid=item_id, values=(diff_text,)
+                )
+        vertical_position = self.tree.yview()[0]
+        if self.participant_tree is not None:
+            self.participant_tree.yview_moveto(vertical_position)
+        if self.diff_tree is not None:
+            self.diff_tree.yview_moveto(vertical_position)
 
     # Ordena la tabla por columna seleccionada.
     def sort_by_column(self, column, stages):
@@ -2088,12 +2341,28 @@ class RallyApp(tk.Tk):
 
     # Limpia tabla y scrollbars actuales.
     def _clear_table(self):
+        if self._floating_columns_refresh_job is not None:
+            try:
+                self.after_cancel(self._floating_columns_refresh_job)
+            except tk.TclError:
+                pass
+            self._floating_columns_refresh_job = None
+        if self.participant_overlay is not None:
+            self.participant_overlay.destroy()
+            self.participant_overlay = None
+            self.participant_tree = None
+        if self.diff_overlay is not None:
+            self.diff_overlay.destroy()
+            self.diff_overlay = None
+            self.diff_tree = None
         if self.tree is not None:
             self.tree.destroy()
             self.tree = None
         for widget in self.table_frame.grid_slaves():
             if isinstance(widget, ttk.Scrollbar):
                 widget.destroy()
+        self._table_v_scrollbar = None
+        self._table_h_scrollbar = None
 
     # Actualiza combos de participantes y etapas.
     def _update_action_sources(self, participants, stages):
@@ -2393,6 +2662,10 @@ class RallyApp(tk.Tk):
         self.style.theme_use("clam")
 
         self.style.configure("TFrame", background=colors["bg"])
+        self.style.configure(
+            "FloatingColumn.TFrame",
+            background=colors["accent"],
+        )
         self.style.configure("TLabel", background=colors["bg"], foreground=colors["fg"])
         self.style.configure(
             "TButton",
