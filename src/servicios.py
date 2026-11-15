@@ -299,7 +299,7 @@ class RallyService:
                     continue
                 total_points += result["total_points"]
                 stage_wins += result["stage_wins"]
-                if result["position"] is not None:
+                if result["awarded"] and result["position"] is not None:
                     position_counts[result["position"]] = (
                         position_counts.get(result["position"], 0) + 1
                     )
