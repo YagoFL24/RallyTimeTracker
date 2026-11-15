@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.3.5 - 2026-11-15
+
+- Merge pull request #26 from YagoFL24/fix/conteo-victorias-podios-campeonato
+- fix: corregir conteo de victorias y podios del campeonato
 ## v1.3.4 - 2026-08-15
 
 - Merge pull request #25 from YagoFL24/fix/rellenar-abandonos-panel-tramo
