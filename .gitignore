@@ -8,3 +8,7 @@ __pycache__/
 *.pyd
 data/
 *.db
+
+# Personal Copilot context; keep these files local to this checkout.
+.github/copilot-instructions.md
+docs/REGISTRO_TRABAJO_IA.local.md
