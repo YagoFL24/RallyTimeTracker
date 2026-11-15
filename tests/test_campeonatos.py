@@ -303,6 +303,9 @@ class ChampionshipScoringTests(ChampionshipTestCase):
         championship = self.service.get_championship_info("Regional")
         self.assertEqual(championship["status"], "En curso")
         self.assertTrue(all(row["points"] == 0 for row in championship["standings"]))
+        standings = {row["driver"]: row for row in championship["standings"]}
+        self.assertTrue(all(row["wins"] == 0 for row in standings.values()))
+        self.assertTrue(all(row["podiums"] == 0 for row in standings.values()))
 
     def test_retired_driver_keeps_stage_win_bonus(self):
         self.create_championship(drivers=["Ana", "Luis"])
