@@ -1,5 +1,8 @@
 # Changelog
 
+## v1.3.6 - 2026-11-15
+
+- chore: ignorar instrucciones locales de Copilot
 ## v1.3.5 - 2026-11-15
 
 - Merge pull request #26 from YagoFL24/fix/conteo-victorias-podios-campeonato
